@@ -49,9 +49,31 @@ function autoEnhance(c: HTMLCanvasElement): void {
 
 export interface Processed { main: Blob; thumb: Blob; width: number; height: number }
 
-/** Resize, straighten orientation, tidy colours, compress. */
-export async function processPhoto(source: Blob, enhance = true): Promise<Processed> {
-  const bmp = await decode(source);
+// ---- background worker (keeps the camera smooth); falls back to the main thread if unsupported ----
+let worker: Worker | null | undefined;
+let jobId = 0;
+const jobs = new Map<number, { resolve: (p: Processed) => void; reject: (e: Error) => void }>();
+
+function getWorker(): Worker | null {
+  if (worker !== undefined) return worker;
+  try {
+    if (typeof OffscreenCanvas === "undefined" || !("convertToBlob" in OffscreenCanvas.prototype)) throw new Error("no OffscreenCanvas");
+    worker = new Worker(new URL("./photoWorker.ts", import.meta.url), { type: "module" });
+    worker.onmessage = (e: MessageEvent<Processed & { id: number; error?: string }>) => {
+      const job = jobs.get(e.data.id);
+      if (!job) return;
+      jobs.delete(e.data.id);
+      if (e.data.error) job.reject(new Error(e.data.error));
+      else job.resolve({ main: e.data.main, thumb: e.data.thumb, width: e.data.width, height: e.data.height });
+    };
+    worker.onerror = () => { worker = null; for (const j of jobs.values()) j.reject(new Error("Photo worker stopped")); jobs.clear(); };
+  } catch {
+    worker = null;
+  }
+  return worker;
+}
+
+async function processOnMainThread(bmp: ImageBitmap, enhance: boolean): Promise<Processed> {
   const size = fitWithin(bmp.width, bmp.height, MAIN_EDGE);
   const c = canvas(size.w, size.h);
   const ctx = ctx2d(c);
@@ -65,6 +87,26 @@ export async function processPhoto(source: Blob, enhance = true): Promise<Proces
   ctx2d(tc).drawImage(c, 0, 0, t.w, t.h);
   const thumb = await toJpeg(tc, 0.7);
   return { main, thumb, width: size.w, height: size.h };
+}
+
+/** Resize, straighten orientation, tidy colours, compress. Accepts a file or a camera frame. */
+export async function processPhoto(source: Blob | ImageBitmap, enhance = true): Promise<Processed> {
+  const bmp = source instanceof Blob ? await decode(source) : source;
+  const w = getWorker();
+  if (!w) return processOnMainThread(bmp, enhance);
+  const id = ++jobId;
+  return new Promise<Processed>((resolve, reject) => {
+    jobs.set(id, { resolve, reject });
+    w.postMessage({ id, bitmap: bmp, enhance, mainEdge: MAIN_EDGE, thumbEdge: THUMB_EDGE }, [bmp]);
+  });
+}
+
+/** Tiny preview for the capture strip (fast). */
+export function previewUrl(bmp: ImageBitmap): Promise<string> {
+  const s = fitWithin(bmp.width, bmp.height, 160);
+  const c = canvas(s.w, s.h);
+  ctx2d(c).drawImage(bmp, 0, 0, s.w, s.h);
+  return toJpeg(c, 0.6).then((b) => URL.createObjectURL(b));
 }
 
 /**
