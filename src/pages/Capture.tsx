@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import Header from "../components/Header";
 import { addPhoto, createItem, listItems } from "../lib/api";
-import { processPhoto } from "../lib/image";
+import { previewUrl, processPhoto, type Processed } from "../lib/image";
 import type { Item } from "../lib/types";
 
 /**
@@ -17,7 +17,6 @@ export default function Capture({ batchId, userId }: { batchId: string; userId: 
   const [error, setError] = useState("");
   const [flash, setFlash] = useState(false);
   const [groupFiles, setGroupFiles] = useState<File[] | null>(null);
-  const [toast, setToast] = useState("");
   const [dragging, setDragging] = useState(false);
 
   const chain = useRef<Promise<unknown>>(Promise.resolve());
@@ -67,38 +66,32 @@ export default function Capture({ batchId, userId }: { batchId: string; userId: 
       .finally(() => setPending((n) => n - 1));
   }
 
-  async function addToCurrent(blob: Blob) {
+  /** `processing` has already started (in the background), so saving only waits for the upload. */
+  async function addToCurrent(processing: Promise<Processed>) {
     if (!current.current) {
       const item = await createItem(batchId, nextPos.current++);
       current.current = { item, photos: 0 };
       setItemCount((n) => n + 1);
     }
     const cur = current.current;
-    const processed = await processPhoto(blob);
-    await addPhoto(userId, cur.item, processed, cur.photos++);
+    await addPhoto(userId, cur.item, await processing, cur.photos++);
   }
 
-  function shoot() {
+  async function shoot() {
     const v = videoRef.current;
     if (!v || !v.videoWidth) return;
-    const c = document.createElement("canvas");
-    c.width = v.videoWidth;
-    c.height = v.videoHeight;
-    c.getContext("2d")!.drawImage(v, 0, 0);
     setFlash(true);
     setTimeout(() => setFlash(false), 120);
-    c.toBlob((blob) => {
-      if (!blob) return;
-      setShots((s) => [...s, URL.createObjectURL(blob)]);
-      enqueue(() => addToCurrent(blob));
-    }, "image/jpeg", 0.92);
+    // Grab the frame straight from the camera (no JPEG round-trip), then tidy it in a background worker.
+    const frame = await createImageBitmap(v);
+    const url = await previewUrl(frame);
+    setShots((s) => [...s, url]);
+    const processing = processPhoto(frame);
+    processing.catch(() => {}); // reported when the queue reaches it
+    enqueue(() => addToCurrent(processing));
   }
 
   function nextItem() {
-    if (shots.length) {
-      setToast(`✓ Item ${itemCount} saved – now shooting item ${itemCount + 1}`);
-      setTimeout(() => setToast(""), 1800);
-    }
     shots.forEach(URL.revokeObjectURL);
     setShots([]);
     chain.current = chain.current.then(() => { current.current = null; });
@@ -128,21 +121,20 @@ export default function Capture({ batchId, userId }: { batchId: string; userId: 
     const size = perItem === 0 ? files.length : perItem;
     for (let i = 0; i < files.length; i += size) {
       const group = files.slice(i, i + size);
-      group.forEach((f) => enqueue(() => addToCurrent(f)));
+      group.forEach((f) => enqueue(() => addToCurrent(processPhoto(f))));
       chain.current = chain.current.then(() => { current.current = null; });
     }
   }
 
   return (
     <>
-      <Header back={`#/b/${batchId}`} title={`${itemCount} items`} right={pending > 0 ? <span className="badge">⬆ {pending}</span> : <span className="badge ok">✓ saved</span>} />
+      <Header back={`#/b/${batchId}`} title={`${itemCount} item${itemCount === 1 ? "" : "s"}`} right={pending > 0 ? <span className="badge">⬆ {pending}</span> : <span className="badge ok">✓ saved</span>} />
       <main
         className={`capture ${dragging ? "dragging" : ""}`}
         onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
         onDrop={(e) => { e.preventDefault(); setDragging(false); onFiles(e.dataTransfer?.files); }}
       >
-        {toast && <div className="toast" role="status">{toast}</div>}
         {cameraOk !== false ? (
           <div className={`viewfinder ${flash ? "flash" : ""}`}>
             <video ref={videoRef} playsInline muted />
@@ -159,9 +151,9 @@ export default function Capture({ batchId, userId }: { batchId: string; userId: 
 
         <div className="strip">
           {shots.map((u, i) => <img key={u} src={u} alt={`photo ${i + 1}`} />)}
-          <span className="muted small">{shots.length
-            ? `Item ${itemCount} · ${shots.length} photo${shots.length > 1 ? "s" : ""} – tap Next item when done`
-            : "Tip: photo 1 = front, photo 2 = back/label. On a computer you can drag & drop photos here."}</span>
+          {shots.length > 0
+            ? <button className="next-link" onClick={nextItem} title="Shortcut: N">Next item ›</button>
+            : <span className="muted small">Item {itemCount + 1}: photo 1 = front, photo 2 = back/label.</span>}
         </div>
 
         <div className="controls">
@@ -170,7 +162,7 @@ export default function Capture({ batchId, userId }: { batchId: string; userId: 
             <input hidden type="file" accept="image/*" multiple onChange={(e) => { onFiles(e.target.files); e.target.value = ""; }} />
           </label>
           <button className="shutter" onClick={shoot} disabled={!cameraOk} aria-label="Take photo" />
-          <button className="button primary next" onClick={nextItem} disabled={!shots.length} title="Shortcut: N">Next item ›</button>
+          <span aria-hidden="true" />
         </div>
         {pending > 0
           ? <button className="button wide" disabled>Saving {pending} photo{pending > 1 ? "s" : ""}…</button>
