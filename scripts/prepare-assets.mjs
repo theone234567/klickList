@@ -19,6 +19,9 @@ if (url && process.env.CI && new URL(url).hostname !== `${guard.supabaseProjectR
 mkdirSync(outDir, { recursive: true });
 mkdirSync("public/ort", { recursive: true });
 copyFileSync("node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.wasm", "public/ort/ort-wasm-simd-threaded.wasm");
+// Free barcode reader for phones without a built-in one (iPhone); served from our own site.
+mkdirSync("public/zxing", { recursive: true });
+copyFileSync("node_modules/zxing-wasm/dist/reader/zxing_reader.wasm", "public/zxing/zxing_reader.wasm");
 
 const done = existsSync(manifestPath) && JSON.parse(readFileSync(manifestPath, "utf8")).sha256 === MODEL_SHA256;
 if (!done) {

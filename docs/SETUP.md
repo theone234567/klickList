@@ -40,6 +40,8 @@ You need **at least one** AI key. Having both lets each back up the other.
 2. You receive a **consumer key** and **consumer secret**. New apps may start on Trade Me's sandbox (`tmsandbox.co.nz`) until Trade Me approves production access. Set `TRADEME_SANDBOX=true` while you're on the sandbox.
 3. Until this is set up, price checks use a Claude web search instead (about 2c each), or you can turn them off in Settings.
 
+**Barcodes (free, nothing to set up):** the app reads barcodes on the phone (including iPhone). Books are looked up by ISBN on Open Library, with Google Books as a backup. DVDs and Blu-rays get their likely region from the barcode's country: 93 Australia / 94 NZ means Region 4 / B, a US barcode means Region 1 / A, and a UK one means Region 2 / B. Anything worked out this way is flagged "check the back cover". Optionally add a free `GOOGLE_BOOKS_API_KEY` (Google Cloud → enable Books API → Credentials → API key), because without it Google's shared quota is often used up.
+
 **Save the keys and deploy the AI functions (no command line needed):**
 1. Create a Supabase access token at <https://supabase.com/dashboard/account/tokens> (name it `github-deploy`).
 2. On GitHub, open the repo → **Settings → Secrets and variables → Actions → New repository secret** and add:
@@ -51,7 +53,7 @@ You need **at least one** AI key. Having both lets each back up the other.
    | `GEMINI_API_KEY` and/or `ANTHROPIC_API_KEY` | your AI key(s) |
    | `ALLOWED_ORIGINS` | your website, e.g. `https://klicklist-app.pages.dev` |
    | `ALLOWED_USERS` | your email address |
-   | optional | `TRADEME_CONSUMER_KEY`, `TRADEME_CONSUMER_SECRET`, `TRADEME_SANDBOX`, `AI_DAILY_LIMIT`, `AI_MODEL`, `GEMINI_MODEL`, `PRICE_SOURCES` |
+   | optional | `TRADEME_CONSUMER_KEY`, `TRADEME_CONSUMER_SECRET`, `TRADEME_SANDBOX`, `AI_DAILY_LIMIT`, `AI_MODEL`, `GEMINI_MODEL`, `PRICE_SOURCES`, `GOOGLE_BOOKS_API_KEY` |
 3. Go to the **Actions** tab → **Deploy Supabase functions** → **Run workflow**. Run it again whenever you change a key.
 
 GitHub keeps these secrets encrypted and they never appear in logs. If you prefer the command line instead, use `supabase secrets set …` and `supabase functions deploy analyze-item ai-batch price-check --no-verify-jwt`.

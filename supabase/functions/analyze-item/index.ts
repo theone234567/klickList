@@ -11,6 +11,7 @@
 //  * Per-user daily cap + a small max_tokens bound the cost of any single account.
 import { AnalyzeRequest, buildUserText, sanitizeListing, type CleanListing } from "../_shared/listing.ts";
 import { providerOrder, ProviderError, writeListing } from "../_shared/providers.ts";
+import { applyBarcodeFacts, barcodeInfo, describeBarcode } from "../_shared/barcode.ts";
 import {
   authenticate, DAILY_LIMIT, getAiPrefs, json, NO_USAGE, readBody, recordUsage, takeQuota,
 } from "../_shared/server.ts";
@@ -57,11 +58,13 @@ Deno.serve(async (req) => {
 
   const prefs = await getAiPrefs(db);
   const order = providerOrder(prefs.provider, prefs.backup);
+  const facts = await barcodeInfo(input.barcode); // free: book details / DVD region from the barcode
 
   try {
-    const { result, listing } = await writeListing(
-      order, input.images, buildUserText(input.hint, input.barcode), sanitizeListing,
+    const { result, listing: raw } = await writeListing(
+      order, input.images, buildUserText(input.hint, input.barcode, describeBarcode(facts)), sanitizeListing,
     );
+    const listing = applyBarcodeFacts(raw as CleanListing, facts);
     await recordUsage(user.id, {
       input: result.inputTokens, output: result.outputTokens, searches: 0,
       costMicro: result.costMicroUsd, gemini: result.provider === "gemini",
