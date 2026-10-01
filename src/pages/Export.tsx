@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { zipSync } from "fflate";
 import Header from "../components/Header";
 import { exportPhotoLinks, getSettings, listItems, markExported, rememberCategory, renderPhoto, updateItem } from "../lib/api";
-import { buildTradeMeCsv, skuFor, TM_TITLE_MAX } from "../lib/trademe";
+import { buildTradeMeCsv, skuFor, TM_TITLE_MAX, tmSummary } from "../lib/trademe";
 import { loadCategories, type TmCategory } from "../lib/categories";
 import CategoryPicker from "../components/CategoryPicker";
 import type { Item, Settings } from "../lib/types";
@@ -68,7 +68,7 @@ export default function ExportPage({ batchId, userId }: { batchId: string; userI
           photoLists.set(item.id, names);
         }
       }
-      const csv = "﻿" + buildTradeMeCsv(approved, settings!.tm_template, photoLists, settings!.category_map, cats.length ? cats : await loadCategories());
+      const csv = "﻿" + buildTradeMeCsv(approved, settings!.tm_template, photoLists, settings!.category_map, cats.length ? cats : await loadCategories(), settings!.prefs.tm);
       const stamp = new Date().toISOString().slice(0, 10);
       if (mode === "links") {
         download(csv, `klicklist-trademe-${stamp}.csv`, "text/csv");
@@ -97,11 +97,7 @@ export default function ExportPage({ batchId, userId }: { batchId: string; userI
         <div className="card stack">
           <b>{approved.length} approved item{approved.length === 1 ? "" : "s"} ready to export</b>
           {approved.length === 0 && <p className="muted">Approve items first (Review → “Approve & next”).</p>}
-          {!settings.tm_template && (
-            <p className="small warn-box card">
-              Tip: load your Trade Me template once in <a href="#/settings">Settings</a> so the file matches Trade Me's columns exactly.
-            </p>
-          )}
+          <p className="small">Listing options: <b>{tmSummary(settings.prefs.tm)}</b> <a href="#/settings">Change</a></p>
         </div>
 
         {longTitles.length > 0 && (

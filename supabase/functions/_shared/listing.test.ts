@@ -26,7 +26,7 @@ describe("sanitizeListing", () => {
   it("caps title length at Trade Me's limit on a word boundary", () => {
     const r = sanitizeListing({ ...base, title: "word ".repeat(40) });
     expect(r.title.length).toBeLessThanOrEqual(TITLE_MAX);
-    expect(r.title.endsWith("word")).toBe(true);
+    expect(r.title).toMatch(/Word$/);
   });
 
   it("clamps silly prices and drops buy-now below start", () => {

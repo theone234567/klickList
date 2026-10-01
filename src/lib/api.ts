@@ -260,7 +260,7 @@ export function priceCheck(item: Item): Promise<{ applied: boolean; source: stri
 export async function getSettings(): Promise<Settings> {
   const { data } = await supabase.from("settings").select("prefs,tm_template,category_map").maybeSingle();
   return {
-    prefs: { ...DEFAULT_PREFS, ...(data?.prefs ?? {}) },
+    prefs: { ...DEFAULT_PREFS, ...(data?.prefs ?? {}), tm: { ...DEFAULT_PREFS.tm, ...(data?.prefs?.tm ?? {}) } },
     tm_template: data?.tm_template ?? null,
     category_map: data?.category_map ?? {},
   };

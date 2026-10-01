@@ -4,7 +4,8 @@
 // product row also supplies your usual defaults (duration, pickup, shipping, payment...).
 import { allowedDuration, categoryById, suggestCategories, type TmCategory } from "./categories";
 import { fullDescription } from "./csv";
-import type { Item, TmTemplate } from "./types";
+import { fixTitleCase } from "../../supabase/functions/_shared/titlecase";
+import type { Item, TmOptions, TmTemplate } from "./types";
 
 /**
  * Trade Me's columns, exactly as in Trade Me's "My Products Import File Template" (guide v6.15).
@@ -145,6 +146,38 @@ export function fitBody(text: string): string {
 
 const price = (n: number | null) => (n === null || n === undefined ? "" : Number(n).toFixed(2));
 
+export const FREE_SHIPPING = "0.00=Free shipping";
+
+/** Shipping text as Trade Me expects it: "price=description;..." or a shipping template name. */
+export function shippingCell(tm: TmOptions): string {
+  if (tm.shipping === "free") return FREE_SHIPPING;
+  return tm.shippingText.replace(/["\r\n]/g, " ").replace(/\s*;\s*/g, ";").trim().slice(0, 500);
+}
+
+/** Columns set by Settings → Trade Me listing options (they override the template). */
+function optionCell(header: string, d: string, tm: TmOptions): string | null {
+  switch (header.trim().toLowerCase()) {
+    case "delivery_price": return shippingCell(tm);
+    case "delivery_pickup_allowed": return boolLike(d, tm.pickup !== "no");
+    case "delivery_must_pickup": return boolLike(d, tm.pickup === "must");
+    case "payment_bank_deposit": return boolLike(d, tm.bank);
+    case "payment_credit_card": return boolLike(d, tm.card);
+    case "payment_cash": return boolLike(d, tm.cash);
+    default: return null;
+  }
+}
+
+/** One line for the item page, e.g. "Free shipping · No pickup · 7 days · Bank deposit". */
+export function tmSummary(tm: TmOptions): string {
+  const pay = [tm.bank && "Bank deposit", tm.card && "Pay Now / card", tm.cash && "Cash"].filter(Boolean).join(", ");
+  return [
+    tm.shipping === "free" ? "Free shipping" : `Shipping: ${tm.shippingText || "not set"}`,
+    { no: "No pickup", allowed: "Pickup allowed", must: "Pickup only" }[tm.pickup],
+    `${tm.days} days`,
+    pay || "No payment method!",
+  ].join(" · ");
+}
+
 /** Category number: set on the item, else remembered for that AI category, else the best automatic match. */
 export function categoryFor(item: Item, categoryMap: Record<string, string>, cats: TmCategory[]): string {
   return item.tm_category || categoryMap[item.category_path] || (cats.length ? String(suggestCategories(item, cats, 1)[0]?.[0] ?? "") : "");
@@ -156,6 +189,7 @@ export function buildTradeMeCsv(
   photoLists: Map<string, string[]>,
   categoryMap: Record<string, string>,
   cats: TmCategory[] = [],
+  tm?: TmOptions,
 ): string {
   const headers = template?.headers ?? FALLBACK_HEADERS;
   const defaults = template?.defaults ?? headers.map((h) => FALLBACK_DEFAULTS[h] ?? "");
@@ -166,12 +200,12 @@ export function buildTradeMeCsv(
       const d = defaults[i] ?? "";
       switch (fieldFor(h)) {
         case "sku": return skuFor(item);
-        case "title": return item.title;
+        case "title": return fixTitleCase(item.title);
         case "description": return fitBody(fullDescription(item));
         case "category": return category || d;
         case "duration": {
-          const want = Number(d) || 7;
-          return cats.length && category ? String(allowedDuration(categoryById(cats, category), want)) : d || "7";
+          const want = tm?.days || Number(d) || 7;
+          return cats.length && category ? String(allowedDuration(categoryById(cats, category), want)) : String(want);
         }
         case "start": return price(item.start_price);
         case "reserve": return price(item.start_price);
@@ -183,7 +217,7 @@ export function buildTradeMeCsv(
         case "brand": return (item.attributes.find((a) => /^brand$/i.test(a.name))?.value ?? "").slice(0, 70);
         case "weight": return item.weight_kg ? String(item.weight_kg) : d;
         case "perItem": return "";
-        default: return d;
+        default: return tm ? optionCell(h, d, tm) ?? d : d;
       }
     });
     lines.push(row.map(tmCell).join(","));

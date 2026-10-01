@@ -67,7 +67,23 @@ export interface Prefs {
   whiteBg: "all" | "main" | "off";
   autoPriceCheck: boolean;
   priceCheckMin: number;
+  tm: TmOptions; // Trade Me listing options written into every upload file
 }
+
+/** Trade Me listing options. They override the same columns from the template. */
+export interface TmOptions {
+  shipping: "free" | "custom";
+  shippingText: string; // e.g. "4.00=Tracked Post;7.25=Courier" or a Trade Me shipping template name
+  pickup: "no" | "allowed" | "must";
+  days: number; // auction length
+  bank: boolean;
+  card: boolean; // Pay Now / credit card
+  cash: boolean;
+}
+
+export const DEFAULT_TM_OPTIONS: TmOptions = {
+  shipping: "free", shippingText: "", pickup: "no", days: 7, bank: true, card: false, cash: false,
+};
 
 export interface TmTemplate { headers: string[]; defaults: string[]; loadedAt: string; preamble?: string[][] }
 
@@ -79,4 +95,5 @@ export interface Settings {
 
 export const DEFAULT_PREFS: Prefs = {
   aiProvider: "claude", aiBackup: true, economy: true, whiteBg: "all", autoPriceCheck: true, priceCheckMin: 5,
+  tm: DEFAULT_TM_OPTIONS,
 };
