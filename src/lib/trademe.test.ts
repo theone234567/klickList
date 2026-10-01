@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { boolLike, buildTradeMeCsv, FALLBACK_HEADERS, fieldFor, fitBody, parseCsv, skuFor, templateFromCsv, TM_BODY_MAX, tmCell } from "./trademe";
-import type { Item } from "./types";
+import { boolLike, buildTradeMeCsv, FALLBACK_HEADERS, fieldFor, fitBody, parseCsv, skuFor, templateFromCsv, TM_BODY_MAX, tmCell, tmSummary } from "./trademe";
+import { DEFAULT_TM_OPTIONS, type Item } from "./types";
 
 const item = (over: Partial<Item> = {}): Item => ({
   id: "3b241101-e2bb-4255-8caf-4136c566a962", batch_id: "b", position: 0, status: "ready", ai_status: "done",
@@ -121,6 +121,25 @@ describe("defaults and automatic categories", () => {
   it("a blank Trade Me template file gets the same defaults", () => {
     const t = templateFromCsv(FALLBACK_HEADERS.join(",") + "\n");
     expect(t.defaults[t.headers.indexOf("delivery_price")]).toBe("0.00=Free shipping");
+  });
+});
+
+describe("listing options from Settings", () => {
+  const row = (tm: import("./types").TmOptions, template: import("./types").TmTemplate | null = null) => {
+    const out = parseCsv(buildTradeMeCsv([item({ title: "shrek 2 dvd" })], template, new Map(), {}, [], tm));
+    return Object.fromEntries(out[0].map((h, i) => [h, out[1][i]]));
+  };
+  it("writes shipping, pickup, length and payment, overriding the template", () => {
+    const t = templateFromCsv("title,delivery_price,delivery_pickup_allowed,delivery_must_pickup,auction_length,payment_bank_deposit,payment_cash\nx,5.00=Courier,True,False,10,False,True\n");
+    const r = row({ ...DEFAULT_TM_OPTIONS, pickup: "allowed", days: 5 }, t);
+    expect([r.delivery_price, r.delivery_pickup_allowed, r.delivery_must_pickup, r.auction_length, r.payment_bank_deposit, r.payment_cash])
+      .toEqual(["0.00=Free shipping", "True", "False", "5", "True", "False"]);
+    expect(r.title).toBe("Shrek 2 DVD");
+  });
+  it("uses your own shipping prices", () => {
+    expect(row({ ...DEFAULT_TM_OPTIONS, shipping: "custom", shippingText: "4.00=Tracked Post ; 7.25=Courier" }).delivery_price)
+      .toBe("4.00=Tracked Post;7.25=Courier");
+    expect(tmSummary(DEFAULT_TM_OPTIONS)).toBe("Free shipping · No pickup · 7 days · Bank deposit");
   });
 });
 

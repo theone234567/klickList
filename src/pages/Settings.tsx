@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import Header from "../components/Header";
 import { getSettings, saveSettings, usageToday } from "../lib/api";
-import { fieldFor, templateFromCsv } from "../lib/trademe";
-import type { Prefs, Settings } from "../lib/types";
+import { fieldFor, templateFromCsv, tmSummary } from "../lib/trademe";
+import type { Prefs, Settings, TmOptions } from "../lib/types";
 
 export default function SettingsPage() {
   const [s, setS] = useState<Settings | null>(null);
@@ -19,6 +19,13 @@ export default function SettingsPage() {
     const prefs = { ...s!.prefs, ...p };
     setS({ ...s!, prefs });
     await saveSettings({ prefs }).catch((e) => setMsg(e.message));
+  }
+
+  /** Listing options; text boxes save when you leave them (save = false while typing). */
+  async function setTm(p: Partial<TmOptions>, save = true) {
+    const prefs = { ...s!.prefs, tm: { ...s!.prefs.tm, ...p } };
+    setS({ ...s!, prefs });
+    if (save) await saveSettings({ prefs }).catch((e) => setMsg(e.message));
   }
 
   async function loadTemplate(file: File | undefined) {
@@ -84,11 +91,46 @@ export default function SettingsPage() {
         </section>
 
         <section className="card stack">
+          <b>Trade Me listing options</b>
+          <p className="muted small">Used for every item in the Trade Me upload file. Now: {tmSummary(s.prefs.tm)}</p>
+          <label>Shipping
+            <select value={s.prefs.tm.shipping} onChange={(e) => setTm({ shipping: e.target.value as TmOptions["shipping"] })}>
+              <option value="free">Free shipping</option>
+              <option value="custom">My own shipping prices</option>
+            </select>
+          </label>
+          {s.prefs.tm.shipping === "custom" && (
+            <label>Shipping prices <span className="muted small">price=description, separated by ; (up to 10), or the name of one of your Trade Me shipping templates</span>
+              <input value={s.prefs.tm.shippingText} maxLength={500} placeholder="4.00=Tracked Post;7.25=Courier;8.50=Rural Courier"
+                onChange={(e) => setTm({ shippingText: e.target.value }, false)} onBlur={() => setTm({})} />
+            </label>
+          )}
+          <label>Pickup
+            <select value={s.prefs.tm.pickup} onChange={(e) => setTm({ pickup: e.target.value as TmOptions["pickup"] })}>
+              <option value="no">No pickups</option>
+              <option value="allowed">Buyer can pick up</option>
+              <option value="must">Buyer must pick up</option>
+            </select>
+          </label>
+          <label>Auction length
+            <select value={s.prefs.tm.days} onChange={(e) => setTm({ days: Number(e.target.value) })}>
+              {[2, 3, 4, 5, 6, 7, 10, 14].map((d) => <option key={d} value={d}>{d} days{d === 10 ? " (Trade Me charges a fee)" : d === 14 ? " (some categories only)" : ""}</option>)}
+            </select>
+          </label>
+          <span className="small muted">If a category doesn't allow this length, the nearest allowed one is used.</span>
+          <b className="small">Payment methods</b>
+          <label className="row"><input type="checkbox" checked={s.prefs.tm.bank} onChange={(e) => setTm({ bank: e.target.checked })} /> Bank deposit</label>
+          <label className="row"><input type="checkbox" checked={s.prefs.tm.card} onChange={(e) => setTm({ card: e.target.checked })} /> Pay Now / credit card</label>
+          <label className="row"><input type="checkbox" checked={s.prefs.tm.cash} onChange={(e) => setTm({ cash: e.target.checked })} /> Cash (on pickup)</label>
+        </section>
+
+        <section className="card stack">
           <b>Trade Me import template</b>
           <p className="muted small">
             One-time setup, best done on a computer: on Trade Me go to <b>My Products</b>, create one product by hand with your usual
             duration, pickup, shipping and payment options, then export your products to CSV and load that file here. KlickList
-            copies its exact columns and uses that product's options as defaults for every item you export.
+            copies its exact columns and other options (e.g. listing footer). Shipping, pickup, auction length and payment
+            come from the listing options above. Optional: without a template KlickList uses Trade Me's standard columns.
           </p>
           <label className="button">
             {t ? "Replace template CSV" : "Load template CSV"}
@@ -103,7 +145,7 @@ export default function SettingsPage() {
                 ))}
               </ul>
             </details>
-          ) : <p className="small warn-box card">No template yet. Exports will use basic column names, which Trade Me may reject.</p>}
+          ) : <p className="small muted">No template loaded – using Trade Me's standard columns.</p>}
         </section>
 
         {Object.keys(s.category_map).length > 0 && (

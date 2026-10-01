@@ -3,13 +3,16 @@ import Header from "../components/Header";
 import Thumb from "../components/Thumb";
 import CategoryPicker from "../components/CategoryPicker";
 import {
-  analyzeItem, deleteItem, deletePhoto, getItem, listItems, makeWhite, mergeInto, priceCheck, rememberCategory,
+  getSettings, analyzeItem, deleteItem, deletePhoto, getItem, listItems, makeWhite, mergeInto, priceCheck, rememberCategory,
   updateItem, updatePhoto,
 } from "../lib/api";
 import { go } from "../lib/router";
 import type { Item, ItemStatus, Photo } from "../lib/types";
 import { CONDITIONS, DESCRIPTION_MAX, SHIPPING_SIZES, TITLE_MAX } from "../../supabase/functions/_shared/limits";
 import { ideasOf, type PriceIdea } from "../../supabase/functions/_shared/ideas";
+import { fixTitleCase } from "../../supabase/functions/_shared/titlecase";
+import { tmSummary } from "../lib/trademe";
+import type { TmOptions } from "../lib/types";
 
 /** Edit one listing. In review mode, "Approve & next" walks through every draft in the batch. */
 export default function ItemEditor({ itemId, review = false }: { itemId: string; review?: boolean }) {
@@ -19,6 +22,8 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(true);
   const [left, setLeft] = useState<number | null>(null);
+  const [tm, setTm] = useState<TmOptions | null>(null);
+  useEffect(() => { getSettings().then((x) => setTm(x.prefs.tm)).catch(() => {}); }, []);
 
   const load = async () => {
     const it = await getItem(itemId);
@@ -170,6 +175,12 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
     setDraft({ ...draft!, photos: fresh.photos });
   }
 
+  const isRegion = (name: string) => /^region$/i.test(name.trim());
+  const region = draft.attributes.find((a) => isRegion(a.name))?.value ?? "";
+  const setRegion = (value: string) => {
+    const rest = draft.attributes.filter((a) => !isRegion(a.name));
+    set("attributes", value.trim() || value ? [{ name: "Region", value }, ...rest] : rest);
+  };
   const ideas = ideasOf(draft.price_check);
   const money = (n: number | null) => (n === null ? "?" : `$${Number(n).toFixed(n % 1 ? 2 : 0)}`);
   return (
@@ -212,6 +223,9 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
 
           <div className="card stack">
             <label>Title <span className="muted small">{draft.title.length}/{TITLE_MAX}</span>
+              {fixTitleCase(draft.title) !== draft.title && (
+                <button className="link small" onClick={(e) => { e.preventDefault(); set("title", fixTitleCase(draft.title)); }}>Fix capitals</button>
+              )}
               <input value={draft.title} maxLength={TITLE_MAX} onChange={(e) => set("title", e.target.value)} />
             </label>
             <label>Description
@@ -222,6 +236,9 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
                 <input value={draft.category_path} maxLength={200} onChange={(e) => set("category_path", e.target.value)} />
               </label>
             </div>
+            <label>Region <span className="muted small">DVD / Blu-ray / games – e.g. Region 4, Region B, PAL. Leave blank for other items.</span>
+              <input value={region} maxLength={40} placeholder="e.g. Region 4" onChange={(e) => setRegion(e.target.value)} />
+            </label>
             <div className="stack">
               <span>Trade Me category</span>
               <CategoryPicker item={draft} value={draft.tm_category} onChange={(code) => set("tm_category", code)} />
@@ -274,8 +291,12 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
               </button>
             </div>
 
+            {tm && (
+              <p className="small">Trade Me options: <b>{tmSummary(tm)}</b> <a href="#/settings">Change</a></p>
+            )}
+
             <b>Details</b>
-            {draft.attributes.map((a, i) => (
+            {draft.attributes.map((a, i) => isRegion(a.name) ? null : (
               <div key={i} className="row">
                 <input style={{ flex: "0 0 35%" }} value={a.name} maxLength={40} onChange={(e) => set("attributes", draft.attributes.map((x, j) => j === i ? { ...x, name: e.target.value } : x))} />
                 <input className="grow" value={a.value} maxLength={120} onChange={(e) => set("attributes", draft.attributes.map((x, j) => j === i ? { ...x, value: e.target.value } : x))} />

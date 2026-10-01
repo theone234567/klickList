@@ -78,7 +78,9 @@ Netlify works the same way. `public/_headers` sets the security headers on both.
 
 klickList then writes files with Trade Me's exact columns and uses that product's options as defaults for every export: listing duration, shipping (`delivery_price`, either prices like `4.00=Tracked Post;7.25=Courier` or the name of a shipping template), pickup and payment.
 
-Without a template (or with Trade Me's blank template file), klickList still writes every column, using these defaults: **free shipping, no pickup**, 7 days, bank deposit, 1 in stock, and no paid extras (no subtitle, second category, bold or gallery).
+**Settings → Trade Me listing options** sets shipping (free, or your own prices / shipping template name), pickup, auction length and payment methods for every item in the upload file. Defaults: **free shipping, no pickup**, 7 days, bank deposit. Each item page shows these, plus a **Region** field for DVDs, Blu-rays and games.
+
+Without a template (or with Trade Me's blank template file), klickList still writes every column, with 1 in stock and no paid extras (no subtitle, second category, bold or gallery).
 
 **Categories are picked automatically** from Trade Me's category list (5,200+ categories, built into the app). Check or change them on the item page or the upload page; klickList remembers your changes for similar items. The listing length is adjusted if a category doesn't allow 7 days.
 
