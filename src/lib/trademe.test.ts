@@ -106,6 +106,24 @@ describe("Trade Me import guide columns", () => {
   });
 });
 
+describe("defaults and automatic categories", () => {
+  it("defaults to free shipping, no pickup, no subtitle, and picks the category itself", async () => {
+    const cats = (await import("../data/trademe-categories.json")).default as import("./categories").TmCategory[];
+    const out = parseCsv(buildTradeMeCsv([item({ subtitle: "old paid subtitle", category_path: "Movies-TV > DVDs > Animated" })], null, new Map(), {}, cats));
+    const row = Object.fromEntries(out[0].map((h, i) => [h, out[1][i]]));
+    expect(row.delivery_price).toBe("0.00=Free shipping");
+    expect(row.delivery_pickup_allowed).toBe("False");
+    expect(row.subtitle).toBe("");
+    expect(row.second_category_id).toBe("");
+    expect(row.category_id).toBe("6211");
+    expect(row.auction_length).toBe("7");
+  });
+  it("a blank Trade Me template file gets the same defaults", () => {
+    const t = templateFromCsv(FALLBACK_HEADERS.join(",") + "\n");
+    expect(t.defaults[t.headers.indexOf("delivery_price")]).toBe("0.00=Free shipping");
+  });
+});
+
 describe("helpers", () => {
   it("maps header aliases", () => {
     expect(fieldFor("Buy Now Price")).toBe("buynow");

@@ -3,6 +3,8 @@ import { zipSync } from "fflate";
 import Header from "../components/Header";
 import { exportPhotoLinks, getSettings, listItems, markExported, rememberCategory, renderPhoto, updateItem } from "../lib/api";
 import { buildTradeMeCsv, skuFor, TM_TITLE_MAX } from "../lib/trademe";
+import { loadCategories, type TmCategory } from "../lib/categories";
+import CategoryPicker from "../components/CategoryPicker";
 import type { Item, Settings } from "../lib/types";
 
 type PhotoMode = "links" | "zip";
@@ -22,7 +24,10 @@ export default function ExportPage({ batchId, userId }: { batchId: string; userI
   const [progress, setProgress] = useState("");
   const [done, setDone] = useState<string[] | null>(null);
   const [error, setError] = useState("");
+  const [cats, setCats] = useState<TmCategory[]>([]);
+  const [showCats, setShowCats] = useState(false);
 
+  useEffect(() => { loadCategories().then(setCats).catch(() => {}); }, []);
   useEffect(() => {
     Promise.all([listItems(batchId), getSettings()])
       .then(([i, s]) => { setItems(i); setSettings(s); })
@@ -32,10 +37,7 @@ export default function ExportPage({ batchId, userId }: { batchId: string; userI
   if (!items || !settings) return <main className="page"><p className="muted">{error || "Loading…"}</p></main>;
 
   const approved = items.filter((i) => i.status === "ready");
-  const catIdx = settings.tm_template?.headers.findIndex((h) => /categ/i.test(h)) ?? -1;
-  const templateCategory = catIdx >= 0 ? settings.tm_template!.defaults[catIdx] : "";
-  const categoryOf = (i: Item) => i.tm_category || settings.category_map[i.category_path] || "";
-  const missingCategory = approved.filter((i) => !categoryOf(i));
+  const noPrice = approved.filter((i) => !i.start_price);
   const longTitles = approved.filter((i) => i.title.length > TM_TITLE_MAX);
 
   async function setCategory(item: Item, code: string) {
@@ -66,7 +68,7 @@ export default function ExportPage({ batchId, userId }: { batchId: string; userI
           photoLists.set(item.id, names);
         }
       }
-      const csv = "﻿" + buildTradeMeCsv(approved, settings!.tm_template, photoLists, settings!.category_map);
+      const csv = "﻿" + buildTradeMeCsv(approved, settings!.tm_template, photoLists, settings!.category_map, cats.length ? cats : await loadCategories());
       const stamp = new Date().toISOString().slice(0, 10);
       if (mode === "links") {
         download(csv, `klicklist-trademe-${stamp}.csv`, "text/csv");
@@ -112,17 +114,25 @@ export default function ExportPage({ batchId, userId }: { batchId: string; userI
           </div>
         )}
 
-        {missingCategory.length > 0 && (
+        {noPrice.length > 0 && (
           <div className="card stack">
-            <b>Trade Me category codes</b>
+            <b>No price yet</b>
+            <p className="muted small">Trade Me needs a start price. Add one to these:</p>
+            {noPrice.map((i) => <a key={i.id} className="small" href={`#/i/${i.id}`}>{i.title || "Untitled"}</a>)}
+          </div>
+        )}
+
+        {approved.length > 0 && (
+          <div className="card stack">
+            <b>Trade Me categories</b>
             <p className="muted small">
-              Trade Me needs its category number (a whole number, not the name). Easiest: copy it from the category_id column of your My Products export, or leave it blank to use your
-              template's default{templateCategory ? ` (${templateCategory})` : ""}. KlickList remembers each code for similar items.
+              Picked automatically from Trade Me's category list. KlickList remembers any you change for similar items.
+              {" "}<button className="link" onClick={() => setShowCats(!showCats)}>{showCats ? "Hide" : "Check them"}</button>
             </p>
-            {missingCategory.map((i) => (
-              <div key={i.id} className="row wrap">
-                <span className="grow small"><b>{i.title}</b><br /><span className="muted">{i.category_path}</span></span>
-                <input style={{ maxWidth: 180 }} placeholder="category number" onBlur={(e) => e.target.value && setCategory(i, e.target.value)} />
+            {showCats && approved.map((i) => (
+              <div key={i.id} className="stack">
+                <b className="small">{i.title}</b>
+                <CategoryPicker item={i} value={i.tm_category || settings.category_map[i.category_path] || ""} onChange={(code) => setCategory(i, code)} />
               </div>
             ))}
           </div>
@@ -134,7 +144,7 @@ export default function ExportPage({ batchId, userId }: { batchId: string; userI
             <span><b>Photo links</b> (easiest) – Trade Me downloads the photos itself. Links expire after 14 days.</span></label>
           <label className="row"><input type="radio" checked={mode === "zip"} onChange={() => setMode("zip")} />
             <span><b>ZIP with photo files</b> – you upload the photos to Trade Me yourself, then the CSV.</span></label>
-          <button className="button primary" disabled={!approved.length || !!progress} onClick={run}>
+          <button className="button primary" disabled={!approved.length || noPrice.length > 0 || !!progress} onClick={run}>
             {progress || `Create Trade Me file (${approved.length})`}
           </button>
           {error && <p className="error">{error}</p>}

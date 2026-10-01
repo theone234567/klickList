@@ -78,11 +78,14 @@ Netlify works the same way. `public/_headers` sets the security headers on both.
 
 klickList then writes files with Trade Me's exact columns and uses that product's options as defaults for every export: listing duration, shipping (`delivery_price`, either prices like `4.00=Tracked Post;7.25=Courier` or the name of a shipping template), pickup and payment.
 
-Without a template, klickList still writes every column from Trade Me's *My Products Import Guide*, but only with basic defaults (7 days, bank deposit, 1 in stock).
+Without a template (or with Trade Me's blank template file), klickList still writes every column, using these defaults: **free shipping, no pickup**, 7 days, bank deposit, 1 in stock, and no paid extras (no subtitle, second category, bold or gallery).
+
+**Categories are picked automatically** from Trade Me's category list (5,200+ categories, built into the app). Check or change them on the item page or the upload page; klickList remembers your changes for similar items. The listing length is adjusted if a category doesn't allow 7 days.
+
+**Prices are yours to set.** The AI's estimate and any price checks appear as **Price ideas**, each with where it came from (links for online checks). Type the start price (and Buy Now if you want) yourself. An item can't be approved without a start price.
 
 Good to know (from the guide):
 - Titles can be **50 characters** at most, and descriptions 2,048. The export page warns about any title that's too long.
-- `category_id` is Trade Me's category **number** (a whole number, not the name). Your export shows it for the product you created; klickList remembers the number for similar items.
 - Products are matched by SKU. Exporting the same item again updates it instead of adding a duplicate.
 
 ## 5. On your phone and computer

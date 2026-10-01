@@ -10,6 +10,7 @@
 import { z } from "zod";
 import { buildUserText, sanitizeListing } from "../_shared/listing.ts";
 import { applyBarcodeFacts, barcodeInfo, describeBarcode } from "../_shared/barcode.ts";
+import { aiIdea, withIdea } from "../_shared/ideas.ts";
 import {
   anthropic, claudeListingParams, claudeMessageToResult, classifyClaudeError, configured,
 } from "../_shared/providers.ts";
@@ -131,12 +132,15 @@ Deno.serve(async (req) => {
         }
         try {
           const result = claudeMessageToResult(r.result.message, true);
-          const { data: row } = await db.from("items").select("barcode").eq("id", r.custom_id).maybeSingle();
+          const { data: row } = await db.from("items").select("barcode,price_check").eq("id", r.custom_id).maybeSingle();
           const listing = applyBarcodeFacts(sanitizeListing(result.raw), await barcodeInfo(row?.barcode ?? "", { lookup: false }));
           await recordUsage(user.id, {
             input: result.inputTokens, output: result.outputTokens, searches: 0, costMicro: result.costMicroUsd, gemini: false,
           }, false);
-          await db.from("items").update({ ...listing, ai_provider: "claude", ai_status: "done", ai_error: null, ai_updated_at: stamp })
+          await db.from("items").update({
+            ...listing, start_price: null, buy_now_price: null, price_check: withIdea(row?.price_check, aiIdea(listing, "claude")),
+            ai_provider: "claude", ai_status: "done", ai_error: null, ai_updated_at: stamp,
+          })
             .eq("id", r.custom_id).eq("ai_status", "batched");
           saved++;
         } catch {

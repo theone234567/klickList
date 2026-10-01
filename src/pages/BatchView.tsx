@@ -6,6 +6,7 @@ import {
 } from "../lib/api";
 import { itemsToCsv } from "../lib/csv";
 import { DEFAULT_PREFS, type Item, type Photo, type Prefs } from "../lib/types";
+import { aiStart, ideasOf } from "../../supabase/functions/_shared/ideas";
 
 const AI_CONCURRENCY = 3;
 const PRICE_CONCURRENCY = 2;
@@ -25,7 +26,7 @@ function needsWhite(p: Photo, prefs: Prefs): boolean {
 
 function needsPrice(i: Item, prefs: Prefs): boolean {
   return prefs.autoPriceCheck && i.ai_status === "done" && i.status === "draft" && !i.price_checked_at
-    && (i.start_price ?? 0) >= prefs.priceCheckMin;
+    && (aiStart(i.price_check) ?? i.start_price ?? 0) >= prefs.priceCheckMin;
 }
 
 export default function BatchView({ batchId, userId }: { batchId: string; userId: string }) {
@@ -230,10 +231,11 @@ export default function BatchView({ batchId, userId }: { batchId: string; userId
                   <div className="tile-body">
                     <b className="clamp">{i.title || (running.has(i.id) ? "Preparing…" : i.ai_status === "batched" || i.ai_status === "queued" ? "💰 In economy batch" : i.photos.length ? "Waiting for AI" : "No photos")}</b>
                     <span className="row small wrap">
-                      {i.start_price != null && <span>${Number(i.start_price).toFixed(0)}</span>}
+                      {i.start_price != null ? <span>${Number(i.start_price).toFixed(0)}</span>
+                        : i.ai_status === "done" && <span className="muted">price?</span>}
                       <span className={`pill ${i.status}`}>{i.status === "ready" ? "approved" : i.status}</span>
                       {i.needs_check.length > 0 && i.status === "draft" && <span className="pill warn">check</span>}
-                      {i.price_check?.found && <span className="pill" title={i.price_check.summary}>🔎</span>}
+                      {ideasOf(i.price_check).some((x) => x.kind !== "ai") && <span className="pill" title="Price checked">🔎</span>}
                     </span>
                   </div>
                 </a>
