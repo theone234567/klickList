@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
 import Header from "../components/Header";
 import Thumb from "../components/Thumb";
+import CategoryPicker from "../components/CategoryPicker";
 import {
   analyzeItem, deleteItem, deletePhoto, getItem, listItems, makeWhite, mergeInto, priceCheck, rememberCategory,
   updateItem, updatePhoto,
 } from "../lib/api";
 import { go } from "../lib/router";
 import type { Item, ItemStatus, Photo } from "../lib/types";
-import { CONDITIONS, DESCRIPTION_MAX, SHIPPING_SIZES, SUBTITLE_MAX, TITLE_MAX } from "../../supabase/functions/_shared/limits";
+import { CONDITIONS, DESCRIPTION_MAX, SHIPPING_SIZES, TITLE_MAX } from "../../supabase/functions/_shared/limits";
+import { ideasOf, type PriceIdea } from "../../supabase/functions/_shared/ideas";
 
 /** Edit one listing. In review mode, "Approve & next" walks through every draft in the batch. */
 export default function ItemEditor({ itemId, review = false }: { itemId: string; review?: boolean }) {
@@ -74,6 +76,8 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
   async function approve() {
     if (busy) return;
     if (!draft!.title.trim()) return setError("Add a title first.");
+    if (!draft!.start_price || draft!.start_price < 0.5) return setError("Type a start price first (at least $0.50) – see the price ideas.");
+    if (draft!.buy_now_price !== null && draft!.buy_now_price < draft!.start_price) return setError("Buy Now must be at least the start price.");
     await save({ status: "ready" });
     if (review) {
       const next = await nextDraft();
@@ -112,7 +116,8 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
       const r = await priceCheck(draft!);
       const fresh = await getItem(itemId);
       setItem(fresh);
-      setDraft(r.applied ? fresh : { ...draft!, price_check: fresh.price_check, price_checked_at: fresh.price_checked_at });
+      void r;
+      setDraft({ ...draft!, price_check: fresh.price_check, price_checked_at: fresh.price_checked_at });
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -120,10 +125,8 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
     }
   }
 
-  function usePriceCheck() {
-    const c = draft!.price_check;
-    if (!c) return;
-    setDraft({ ...draft!, start_price: c.start, buy_now_price: c.buy_now });
+  function useIdea(idea: PriceIdea) {
+    setDraft({ ...draft!, start_price: idea.start, buy_now_price: idea.buy_now });
     setSaved(false);
   }
 
@@ -167,7 +170,8 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
     setDraft({ ...draft!, photos: fresh.photos });
   }
 
-  const pc = draft.price_check;
+  const ideas = ideasOf(draft.price_check);
+  const money = (n: number | null) => (n === null ? "?" : `$${Number(n).toFixed(n % 1 ? 2 : 0)}`);
   return (
     <>
       <Header back={`#/b/${draft.batch_id}`} title={review ? `Review${left !== null ? ` · ${left} left` : ""}` : "Edit item"} right={
@@ -210,9 +214,6 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
             <label>Title <span className="muted small">{draft.title.length}/{TITLE_MAX}</span>
               <input value={draft.title} maxLength={TITLE_MAX} onChange={(e) => set("title", e.target.value)} />
             </label>
-            <label>Subtitle (optional, Trade Me charges for this) <span className="muted small">{draft.subtitle.length}/{SUBTITLE_MAX}</span>
-              <input value={draft.subtitle} maxLength={SUBTITLE_MAX} onChange={(e) => set("subtitle", e.target.value)} />
-            </label>
             <label>Description
               <textarea rows={7} value={draft.description} maxLength={DESCRIPTION_MAX} onChange={(e) => set("description", e.target.value)} />
             </label>
@@ -220,9 +221,10 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
               <label className="grow">Category (AI suggestion)
                 <input value={draft.category_path} maxLength={200} onChange={(e) => set("category_path", e.target.value)} />
               </label>
-              <label style={{ flex: "0 1 170px" }}>Trade Me category code
-                <input value={draft.tm_category} maxLength={60} placeholder="optional" onChange={(e) => set("tm_category", e.target.value.replace(/[^\w\-./ ]/g, ""))} />
-              </label>
+            </div>
+            <div className="stack">
+              <span>Trade Me category</span>
+              <CategoryPicker item={draft} value={draft.tm_category} onChange={(code) => set("tm_category", code)} />
             </div>
             <div className="row wrap">
               <label className="grow">Condition
@@ -246,29 +248,31 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
                   onChange={(e) => set("buy_now_price", e.target.value === "" ? null : Number(e.target.value))} />
               </label>
             </div>
-            {draft.price_reasoning && (
-              <p className="muted small">Price note ({draft.price_confidence ?? "low"} confidence): {draft.price_reasoning}</p>
-            )}
-            {pc ? (
-              <div className="card small stack price-box">
-                <span>
-                  <b>Online check:</b> {pc.found ? <>typically ${pc.typical ?? "?"} (range ${pc.low ?? "?"}–${pc.high ?? "?"})</> : "no close matches found"}
-                  {" · "}suggests start ${pc.start}{pc.buy_now ? `, Buy Now $${pc.buy_now}` : ""}
-                </span>
-                {pc.summary && <span className="muted">{pc.summary}</span>}
-                {pc.sources.length > 0 && (
-                  <span className="muted">Sources: {pc.sources.map((s, i) => (
-                    <a key={i} href={s.url} target="_blank" rel="noopener noreferrer nofollow">{s.title || "link"}{i < pc.sources.length - 1 ? ", " : ""}</a>
-                  ))}</span>
-                )}
-                <span className="row">
-                  <button className="link" onClick={usePriceCheck}>Use these prices</button>
-                  <button className="link" disabled={!!busy} onClick={checkPrice}>Check again</button>
-                </span>
-              </div>
-            ) : (
-              <button className="button small" disabled={!!busy || !draft.title} onClick={checkPrice}>🔎 Check Trade Me prices</button>
-            )}
+            <div className="card small stack price-box">
+              <b>Price ideas</b>
+              {ideas.map((idea) => (
+                <div key={idea.kind} className="stack">
+                  <span>
+                    <b>{idea.source}:</b>{" "}
+                    {idea.typical || idea.low ? <>typically {money(idea.typical)}{idea.low && idea.high ? ` (range ${money(idea.low)}–${money(idea.high)})` : ""} · </> : null}
+                    start {money(idea.start)}{idea.buy_now ? `, Buy Now ${money(idea.buy_now)}` : ""}
+                    {" "}<button className="link" onClick={() => useIdea(idea)}>Use</button>
+                  </span>
+                  {idea.note && <span className="muted">{idea.note}</span>}
+                  {idea.links.length > 0 && (
+                    <span className="muted">From: {idea.links.map((l, i) => (
+                      <a key={i} href={l.url} target="_blank" rel="noopener noreferrer nofollow">{l.title || "link"}{i < idea.links.length - 1 ? ", " : ""}</a>
+                    ))}</span>
+                  )}
+                </div>
+              ))}
+              {!ideas.length && draft.price_reasoning && <span className="muted">AI note: {draft.price_reasoning}</span>}
+              {!ideas.length && !draft.price_reasoning && <span className="muted">No price ideas yet.</span>}
+              <span className="muted">These are only ideas – type your own price above.</span>
+              <button className="button small" disabled={!!busy || !draft.title} onClick={checkPrice}>
+                🔎 {ideas.some((i) => i.kind !== "ai") ? "Check prices again" : "Check Trade Me prices"}
+              </button>
+            </div>
 
             <b>Details</b>
             {draft.attributes.map((a, i) => (

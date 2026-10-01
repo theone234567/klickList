@@ -76,7 +76,17 @@ Netlify works the same way. `public/_headers` sets the security headers on both.
 2. Export your products to CSV.
 3. In klickList, go to **Settings → Trade Me import template** and load that CSV.
 
-klickList then writes files with Trade Me's exact columns and uses that product's options as defaults for every export.
+klickList then writes files with Trade Me's exact columns and uses that product's options as defaults for every export: listing duration, shipping (`delivery_price`, either prices like `4.00=Tracked Post;7.25=Courier` or the name of a shipping template), pickup and payment.
+
+Without a template (or with Trade Me's blank template file), klickList still writes every column, using these defaults: **free shipping, no pickup**, 7 days, bank deposit, 1 in stock, and no paid extras (no subtitle, second category, bold or gallery).
+
+**Categories are picked automatically** from Trade Me's category list (5,200+ categories, built into the app). Check or change them on the item page or the upload page; klickList remembers your changes for similar items. The listing length is adjusted if a category doesn't allow 7 days.
+
+**Prices are yours to set.** The AI's estimate and any price checks appear as **Price ideas**, each with where it came from (links for online checks). Type the start price (and Buy Now if you want) yourself. An item can't be approved without a start price.
+
+Good to know (from the guide):
+- Titles can be **50 characters** at most, and descriptions 2,048. The export page warns about any title that's too long.
+- Products are matched by SKU. Exporting the same item again updates it instead of adding a duplicate.
 
 ## 5. On your phone and computer
 
@@ -89,7 +99,7 @@ Open the site → **Share → Add to Home Screen** (iPhone) or **⋮ → Install
 1. **New batch**, then snap items on your phone: 1–3 photos each, then **Next item**. Photo 1 should be the front and photo 2 the back or label. On a computer you can drag & drop photos instead.
 2. Tap **Done**. The AI writes all the listings. In economy mode they arrive within minutes to an hour, and you can close the app while you wait. White backgrounds and price checks run while the batch page is open. A computer does white backgrounds fastest, so it's a good idea to open the batch on your desktop.
 3. **Review & approve**: check each draft, fix anything flagged, then **Approve & next** (Ctrl/Cmd+Enter on desktop).
-4. **Upload to Trade Me**: create the file, then on Trade Me go to **My Products → Import photos & products → Import CSV file**.
+4. **Upload to Trade Me**: create the file, then on Trade Me go to **My Products → Import photos & products → Import CSV file**. The import only adds them to My Products: tick the new products and choose **List** to put them on Trade Me.
 5. When items sell, delete old batches to free up storage.
 
 ## Keeping KlickList separate from your other sites

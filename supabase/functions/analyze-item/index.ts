@@ -12,6 +12,7 @@
 import { AnalyzeRequest, buildUserText, sanitizeListing, type CleanListing } from "../_shared/listing.ts";
 import { providerOrder, ProviderError, writeListing } from "../_shared/providers.ts";
 import { applyBarcodeFacts, barcodeInfo, describeBarcode } from "../_shared/barcode.ts";
+import { aiIdea, withIdea } from "../_shared/ideas.ts";
 import {
   authenticate, DAILY_LIMIT, getAiPrefs, json, NO_USAGE, readBody, recordUsage, takeQuota,
 } from "../_shared/server.ts";
@@ -41,7 +42,7 @@ Deno.serve(async (req) => {
   if (!input.images.every(isJpeg)) return json({ error: "Photos must be JPEG" }, 400, origin);
 
   // RLS guarantees this only finds the caller's own item.
-  const { data: item } = await db.from("items").select("id").eq("id", input.itemId).maybeSingle();
+  const { data: item } = await db.from("items").select("id,price_check").eq("id", input.itemId).maybeSingle();
   if (!item) return json({ error: "Item not found" }, 404, origin);
 
   try {
@@ -69,8 +70,11 @@ Deno.serve(async (req) => {
       input: result.inputTokens, output: result.outputTokens, searches: 0,
       costMicro: result.costMicroUsd, gemini: result.provider === "gemini",
     }, false);
+    // The AI's price goes in the price ideas, not the price: the seller types the price.
     const { error } = await db.from("items").update({
-      ...(listing as CleanListing), ai_provider: result.provider, ai_status: "done", ai_error: null, ai_updated_at: stamp(),
+      ...(listing as CleanListing), start_price: null, buy_now_price: null,
+      price_check: withIdea(item.price_check, aiIdea(listing as CleanListing, result.provider)),
+      ai_provider: result.provider, ai_status: "done", ai_error: null, ai_updated_at: stamp(),
     }).eq("id", input.itemId);
     if (error) {
       console.error("save error", error.message);

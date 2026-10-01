@@ -3,13 +3,15 @@
 //  * "trademe" (default when Trade Me API keys are set): searches Trade Me's own API. Free - no AI.
 //  * "claude": one Claude web search, text only (~2c). Only used if configured in PRICE_SOURCES.
 // PRICE_SOURCES is an ordered list, e.g. "trademe" (free only) or "trademe,claude" (fall back to paid).
-// Numbers from any source are clamped/validated before saving, and approved items are never changed.
+// Numbers from any source are clamped/validated, then saved as a "price idea" with its source.
+// Price ideas never change the item's price: the seller types the price.
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import {
   buildPriceQuery, cleanSources, PRICE_SYSTEM, REPORT_PRICE_TOOL, sanitizePriceReport, type PriceCheck,
 } from "../_shared/price.ts";
 import { claudeCostMicro } from "../_shared/providers.ts";
+import { withIdea, type PriceIdea } from "../_shared/ideas.ts";
 import { authenticate, DAILY_LIMIT, json, readBody, recordUsage, takeQuota, NO_USAGE, type Usage } from "../_shared/server.ts";
 import { searchTerms, searchTradeMe, summarise } from "../_shared/trademe_price.ts";
 
@@ -76,7 +78,7 @@ Deno.serve(async (req) => {
   }
 
   const { data: item } = await db.from("items")
-    .select("id,title,condition,category_path,attributes,start_price,status").eq("id", itemId).maybeSingle();
+    .select("id,title,condition,category_path,attributes,start_price,status,price_check").eq("id", itemId).maybeSingle();
   if (!item) return json({ error: "Item not found" }, 404, origin);
   if (!item.title) return json({ error: "Write the listing first" }, 400, origin);
   if (!SOURCES.length) return json({ error: "Price checks are not set up" }, 503, origin);
@@ -106,19 +108,19 @@ Deno.serve(async (req) => {
   await recordUsage(user.id, total, !check);
   if (!check) return json({ error: "Price check failed - try again later" }, 502, origin);
 
-  // Only adjust prices on drafts - never silently change something you already approved.
-  const applyPrices = item.status === "draft" && check.found;
+  const idea: PriceIdea = {
+    kind: source === "trademe" ? "trademe" : "web",
+    source: source === "trademe" ? "Trade Me – similar listings now" : "Web search (Claude)",
+    start: check.start, buy_now: check.buy_now, low: check.low, high: check.high, typical: check.typical,
+    note: check.found ? check.summary : `No close matches found. ${check.summary}`.trim(),
+    links: check.sources,
+    at: new Date().toISOString(),
+  };
   const { error } = await db.from("items").update({
-    price_check: check,
+    price_check: withIdea(item.price_check, idea),
     price_checked_at: new Date().toISOString(),
-    ...(applyPrices ? {
-      start_price: check.start,
-      buy_now_price: check.buy_now,
-      price_confidence: "medium",
-      price_reasoning: check.summary.slice(0, 300),
-    } : {}),
   }).eq("id", itemId);
   if (error) return json({ error: "Could not save" }, 500, origin);
 
-  return json({ ok: true, applied: applyPrices, source, check }, 200, origin);
+  return json({ ok: true, applied: false, source, check }, 200, origin);
 });

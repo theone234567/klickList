@@ -42,7 +42,7 @@ export interface Item {
   weight_kg: number | null;
   needs_check: string[];
   tm_category: string;
-  price_check: PriceCheck | null;
+  price_check: PriceCheck | { ideas: unknown[] } | null; // read with ideasOf()
   price_checked_at: string | null;
   exported_at: string | null;
   ai_provider: "claude" | "gemini" | null;
@@ -69,7 +69,7 @@ export interface Prefs {
   priceCheckMin: number;
 }
 
-export interface TmTemplate { headers: string[]; defaults: string[]; loadedAt: string }
+export interface TmTemplate { headers: string[]; defaults: string[]; loadedAt: string; preamble?: string[][] }
 
 export interface Settings {
   prefs: Prefs;
