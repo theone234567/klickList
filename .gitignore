@@ -7,3 +7,4 @@ supabase/.branches
 supabase/functions/.env
 public/models
 public/ort
+public/zxing

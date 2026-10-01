@@ -154,16 +154,53 @@ export async function renderFinal(source: Blob, rotation: number, crop: Crop | n
   return toJpeg(c, 0.9);
 }
 
-/** Try to read a barcode on-device (Chrome/Android). Free, and helps the AI identify DVDs/books. */
+type Detector = { detect(image: ImageBitmap): Promise<{ rawValue: string }[]> };
+const BARCODE_FORMATS = ["ean_13", "ean_8", "upc_a", "upc_e", "code_128"];
+let detectorPromise: Promise<Detector | null> | null = null;
+
+/**
+ * Barcode reader: the phone's built-in one where it exists (Android/Chrome), otherwise a free
+ * open-source reader (ZXing, WebAssembly) served from our own site - this is what makes iPhones work.
+ */
+function getDetector(): Promise<Detector | null> {
+  detectorPromise ??= (async () => {
+    const Native = (globalThis as unknown as {
+      BarcodeDetector?: { new (o: object): Detector; getSupportedFormats?: () => Promise<string[]> };
+    }).BarcodeDetector;
+    if (Native) {
+      try {
+        const supported = await Native.getSupportedFormats?.();
+        if (!supported || BARCODE_FORMATS.some((f) => supported.includes(f))) return new Native({ formats: BARCODE_FORMATS });
+      } catch { /* fall through to ZXing */ }
+    }
+    try {
+      const zx = await import("barcode-detector/ponyfill");
+      zx.prepareZXingModule({
+        overrides: {
+          locateFile: (path: string, prefix: string) => (path.endsWith(".wasm") ? `/zxing/${path}` : prefix + path),
+        },
+      });
+      return new zx.BarcodeDetector({ formats: BARCODE_FORMATS as never }) as unknown as Detector;
+    } catch {
+      return null;
+    }
+  })();
+  return detectorPromise;
+}
+
+/** Read a barcode on-device. Free, and gives exact book/DVD details plus the DVD's likely region. */
 export async function readBarcode(source: Blob): Promise<string> {
-  const BD = (globalThis as unknown as { BarcodeDetector?: new (o: object) => { detect(i: ImageBitmap): Promise<{ rawValue: string }[]> } }).BarcodeDetector;
-  if (!BD) return "";
   try {
+    const detector = await getDetector();
+    if (!detector) return "";
     const bmp = await decode(source);
-    const found = await new BD({ formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128"] }).detect(bmp);
-    bmp.close();
-    const v = found[0]?.rawValue ?? "";
-    return /^[0-9A-Za-z-]{4,32}$/.test(v) ? v : "";
+    try {
+      const found = await detector.detect(bmp);
+      const v = found.find((f) => /^\d{8,14}$/.test(f.rawValue))?.rawValue ?? found[0]?.rawValue ?? "";
+      return /^[0-9A-Za-z-]{4,32}$/.test(v) ? v : "";
+    } finally {
+      bmp.close();
+    }
   } catch {
     return "";
   }

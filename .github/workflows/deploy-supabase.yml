@@ -6,7 +6,7 @@
 #   ALLOWED_ORIGINS         e.g. https://klicklist-app.pages.dev                recommended
 #   ALLOWED_USERS           your email                                          recommended
 #   optional: TRADEME_CONSUMER_KEY, TRADEME_CONSUMER_SECRET, TRADEME_SANDBOX, AI_DAILY_LIMIT,
-#             AI_MODEL, GEMINI_MODEL, PRICE_SOURCES
+#             AI_MODEL, GEMINI_MODEL, PRICE_SOURCES, GOOGLE_BOOKS_API_KEY
 # Then: Actions tab -> "Deploy Supabase functions" -> Run workflow.
 name: Deploy Supabase functions
 
@@ -75,10 +75,11 @@ jobs:
           AI_MODEL: ${{ secrets.AI_MODEL }}
           GEMINI_MODEL: ${{ secrets.GEMINI_MODEL }}
           PRICE_SOURCES: ${{ secrets.PRICE_SOURCES }}
+          GOOGLE_BOOKS_API_KEY: ${{ secrets.GOOGLE_BOOKS_API_KEY }}
         run: |
           args=()
           for k in ANTHROPIC_API_KEY GEMINI_API_KEY TRADEME_CONSUMER_KEY TRADEME_CONSUMER_SECRET TRADEME_SANDBOX \
-                   ALLOWED_ORIGINS ALLOWED_USERS AI_DAILY_LIMIT AI_MODEL GEMINI_MODEL PRICE_SOURCES; do
+                   ALLOWED_ORIGINS ALLOWED_USERS AI_DAILY_LIMIT AI_MODEL GEMINI_MODEL PRICE_SOURCES GOOGLE_BOOKS_API_KEY; do
             v="${!k}"
             if [ -n "$v" ]; then args+=("$k=$v"); echo "setting $k"; fi
           done

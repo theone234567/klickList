@@ -9,6 +9,7 @@
 // 'pending' and the app writes them in instant mode instead (Gemini is free).
 import { z } from "zod";
 import { buildUserText, sanitizeListing } from "../_shared/listing.ts";
+import { applyBarcodeFacts, barcodeInfo, describeBarcode } from "../_shared/barcode.ts";
 import {
   anthropic, claudeListingParams, claudeMessageToResult, classifyClaudeError, configured,
 } from "../_shared/providers.ts";
@@ -56,14 +57,23 @@ Deno.serve(async (req) => {
     if (granted === 0) return json({ error: "Daily AI limit reached. Try again tomorrow." }, 429, origin);
     const batchItems = queued.slice(0, granted);
 
+    // Free barcode lookups (book details / DVD region), 8 at a time so a big batch stays quick.
+    const factsById = new Map<string, Awaited<ReturnType<typeof barcodeInfo>>>();
+    for (let i = 0; i < batchItems.length; i += 8) {
+      const chunk = batchItems.slice(i, i + 8);
+      const results = await Promise.all(chunk.map((it) => barcodeInfo(it.barcode ?? "")));
+      chunk.forEach((it, k) => factsById.set(it.id, results[k]));
+    }
+
     const requests = [];
     const missing: string[] = [];
     for (const it of batchItems) {
       const { data: file } = await db.storage.from("photos").download(aiPath(it.id));
       if (!file) { missing.push(it.id); continue; }
+      const facts = factsById.get(it.id) ?? null;
       requests.push({
         custom_id: it.id,
-        params: claudeListingParams([b64(await file.arrayBuffer())], buildUserText(it.hint ?? "", it.barcode ?? "")),
+        params: claudeListingParams([b64(await file.arrayBuffer())], buildUserText(it.hint ?? "", it.barcode ?? "", describeBarcode(facts))),
       });
     }
     for (const _ of missing) await recordUsage(user.id, NO_USAGE, true);
@@ -121,7 +131,8 @@ Deno.serve(async (req) => {
         }
         try {
           const result = claudeMessageToResult(r.result.message, true);
-          const listing = sanitizeListing(result.raw);
+          const { data: row } = await db.from("items").select("barcode").eq("id", r.custom_id).maybeSingle();
+          const listing = applyBarcodeFacts(sanitizeListing(result.raw), await barcodeInfo(row?.barcode ?? "", { lookup: false }));
           await recordUsage(user.id, {
             input: result.inputTokens, output: result.outputTokens, searches: 0, costMicro: result.costMicroUsd, gemini: false,
           }, false);
