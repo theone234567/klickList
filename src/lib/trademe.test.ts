@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { boolLike, buildTradeMeCsv, fieldFor, parseCsv, skuFor, templateFromCsv, tmCell } from "./trademe";
+import { boolLike, buildTradeMeCsv, FALLBACK_HEADERS, fieldFor, fitBody, parseCsv, skuFor, templateFromCsv, TM_BODY_MAX, tmCell } from "./trademe";
 import type { Item } from "./types";
 
 const item = (over: Partial<Item> = {}): Item => ({
@@ -48,6 +48,61 @@ describe("template", () => {
     const cat = (it: Item, map: Record<string, string>) => parseCsv(buildTradeMeCsv([it], t, new Map(), map))[1][3];
     expect(cat(item(), { "Movies & TV > DVDs": "0003-9999-" })).toBe("0003-9999-");
     expect(cat(item({ tm_category: "1234" }), { "Movies & TV > DVDs": "0003-9999-" })).toBe("1234");
+  });
+});
+
+describe("Trade Me style export", () => {
+  // Snake_case columns and TRUE/FALSE as in Trade Me's My Products export, with a note line above the headers.
+  const csv = '"Seller notes: edit below"\n'
+    + 'sku,title,description,category,start_price,is_new,is_sold_in_multiple_quantities,shipping_options,payment_bank_deposit,product_id\n'
+    + 'OLD1,Old thing,Old desc,0003-0050-,5,FALSE,FALSE,new_5.40,TRUE,999\n';
+  it("finds the header row and keeps the note line and option defaults", () => {
+    const t = templateFromCsv(csv);
+    expect(t.preamble).toEqual([["Seller notes: edit below"]]);
+    expect(t.headers[0]).toBe("sku");
+    const out = parseCsv(buildTradeMeCsv([item({ condition: "New" })], t, new Map(), {}));
+    expect(out[0]).toEqual(["Seller notes: edit below"]);
+    expect(out[1]).toEqual(t.headers);
+    const row = Object.fromEntries(t.headers.map((h, i) => [h, out[2][i]]));
+    expect(row.is_new).toBe("TRUE");
+    expect(row.is_sold_in_multiple_quantities).toBe("FALSE");
+    expect(row.shipping_options).toBe("new_5.40");
+    expect(row.payment_bank_deposit).toBe("TRUE");
+    expect(row.product_id).toBe("");
+  });
+});
+
+describe("Trade Me import guide columns", () => {
+  it("without a template, writes every column in the guide with safe defaults", () => {
+    expect(FALLBACK_HEADERS).toHaveLength(58);
+    const out = parseCsv(buildTradeMeCsv([item({ barcode: "9312345678907", weight_kg: 0.2,
+      attributes: [{ name: "Brand", value: "Sony" }, { name: "Region", value: "4" }] })], null, new Map(), { "Movies & TV > DVDs": "4425" }));
+    const row = Object.fromEntries(out[0].map((h, i) => [h, out[1][i]]));
+    expect(row.category_id).toBe("4425");
+    expect(row.body).toContain("Region: 4");
+    expect(row.barcode_gtin).toBe("9312345678907");
+    expect(row.brand).toBe("Sony");
+    expect(row.weight_kg).toBe("0.2");
+    expect(row.stock_amount).toBe("1");
+    expect(row.unlimited_stock).toBe("False");
+    expect(row.is_new).toBe("False");
+    expect(row.auction_length).toBe("7");
+  });
+  it("never copies the template product's own attributes, barcode or second category", () => {
+    const csv = "sku,title,body,category_id,attributes,second_category_id,dvd_catalogue_id,barcode_gtin,brand,delivery_price\n"
+      + "A1,Camera,Desc,1234,CameraBrand=Nikon,5678,99,9400000000000,Nikon,4.00=Tracked Post\n";
+    const t = templateFromCsv(csv);
+    const out = parseCsv(buildTradeMeCsv([item({ attributes: [] })], t, new Map(), {}));
+    const row = Object.fromEntries(out[0].map((h, i) => [h, out[1][i]]));
+    expect([row.attributes, row.second_category_id, row.dvd_catalogue_id, row.barcode_gtin, row.brand]).toEqual(["", "", "", "", ""]);
+    expect(row.delivery_price).toBe("4.00=Tracked Post");
+    expect(row.category_id).toBe("1234");
+  });
+  it("keeps descriptions within Trade Me's 2048 characters", () => {
+    const long = ("word ".repeat(500)).trim();
+    expect(fitBody(long).length).toBeLessThanOrEqual(TM_BODY_MAX);
+    expect(fitBody(long).endsWith("word")).toBe(true);
+    expect(fitBody("short")).toBe("short");
   });
 });
 

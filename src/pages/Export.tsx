@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { zipSync } from "fflate";
 import Header from "../components/Header";
 import { exportPhotoLinks, getSettings, listItems, markExported, rememberCategory, renderPhoto, updateItem } from "../lib/api";
-import { buildTradeMeCsv, skuFor } from "../lib/trademe";
+import { buildTradeMeCsv, skuFor, TM_TITLE_MAX } from "../lib/trademe";
 import type { Item, Settings } from "../lib/types";
 
 type PhotoMode = "links" | "zip";
@@ -36,6 +36,7 @@ export default function ExportPage({ batchId, userId }: { batchId: string; userI
   const templateCategory = catIdx >= 0 ? settings.tm_template!.defaults[catIdx] : "";
   const categoryOf = (i: Item) => i.tm_category || settings.category_map[i.category_path] || "";
   const missingCategory = approved.filter((i) => !categoryOf(i));
+  const longTitles = approved.filter((i) => i.title.length > TM_TITLE_MAX);
 
   async function setCategory(item: Item, code: string) {
     const clean = code.replace(/[^\w\-./ ]/g, "").slice(0, 60);
@@ -101,17 +102,27 @@ export default function ExportPage({ batchId, userId }: { batchId: string; userI
           )}
         </div>
 
+        {longTitles.length > 0 && (
+          <div className="card stack">
+            <b>Titles too long for Trade Me</b>
+            <p className="muted small">Trade Me's import allows {TM_TITLE_MAX} characters. Shorten these, or Trade Me will reject them:</p>
+            {longTitles.map((i) => (
+              <a key={i.id} className="small" href={`#/i/${i.id}`}>{i.title} ({i.title.length})</a>
+            ))}
+          </div>
+        )}
+
         {missingCategory.length > 0 && (
           <div className="card stack">
             <b>Trade Me category codes</b>
             <p className="muted small">
-              Trade Me needs its own category code. Copy it from the category on Trade Me, or leave it blank to use your
+              Trade Me needs its category number (a whole number, not the name). Easiest: copy it from the category_id column of your My Products export, or leave it blank to use your
               template's default{templateCategory ? ` (${templateCategory})` : ""}. KlickList remembers each code for similar items.
             </p>
             {missingCategory.map((i) => (
               <div key={i.id} className="row wrap">
                 <span className="grow small"><b>{i.title}</b><br /><span className="muted">{i.category_path}</span></span>
-                <input style={{ maxWidth: 180 }} placeholder="e.g. 0003-0050-" onBlur={(e) => e.target.value && setCategory(i, e.target.value)} />
+                <input style={{ maxWidth: 180 }} placeholder="category number" onBlur={(e) => e.target.value && setCategory(i, e.target.value)} />
               </div>
             ))}
           </div>
@@ -136,7 +147,7 @@ export default function ExportPage({ batchId, userId }: { batchId: string; userI
               <li>Open <a href="https://sell.trademe.co.nz/" target="_blank" rel="noopener noreferrer">My Products ↗</a> → <b>Import photos &amp; products</b>.</li>
               {mode === "zip" && <li><b>Step 1 – Import photos</b>: unzip the file and upload everything in the <code>photos</code> folder.</li>}
               <li><b>Step 2 – Import CSV file</b>: choose the {mode === "zip" ? "trademe-products.csv from the ZIP" : "downloaded .csv"}.</li>
-              <li>Check the products on Trade Me, then list them.</li>
+              <li>The import only adds them to <b>My Products</b>. Tick the new products and choose <b>List</b> to put them on Trade Me.</li>
             </ol>
             <p className="muted small">Each item keeps the same SKU (KL…), so if you fix something here and export again, Trade Me updates that product instead of adding a duplicate.</p>
             <button className="button" onClick={markListed}>Mark these {done.length} as listed</button>

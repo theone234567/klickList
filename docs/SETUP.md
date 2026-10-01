@@ -76,7 +76,14 @@ Netlify works the same way. `public/_headers` sets the security headers on both.
 2. Export your products to CSV.
 3. In klickList, go to **Settings → Trade Me import template** and load that CSV.
 
-klickList then writes files with Trade Me's exact columns and uses that product's options as defaults for every export.
+klickList then writes files with Trade Me's exact columns and uses that product's options as defaults for every export: listing duration, shipping (`delivery_price`, either prices like `4.00=Tracked Post;7.25=Courier` or the name of a shipping template), pickup and payment.
+
+Without a template, klickList still writes every column from Trade Me's *My Products Import Guide*, but only with basic defaults (7 days, bank deposit, 1 in stock).
+
+Good to know (from the guide):
+- Titles can be **50 characters** at most, and descriptions 2,048. The export page warns about any title that's too long.
+- `category_id` is Trade Me's category **number** (a whole number, not the name). Your export shows it for the product you created; klickList remembers the number for similar items.
+- Products are matched by SKU. Exporting the same item again updates it instead of adding a duplicate.
 
 ## 5. On your phone and computer
 
@@ -89,7 +96,7 @@ Open the site → **Share → Add to Home Screen** (iPhone) or **⋮ → Install
 1. **New batch**, then snap items on your phone: 1–3 photos each, then **Next item**. Photo 1 should be the front and photo 2 the back or label. On a computer you can drag & drop photos instead.
 2. Tap **Done**. The AI writes all the listings. In economy mode they arrive within minutes to an hour, and you can close the app while you wait. White backgrounds and price checks run while the batch page is open. A computer does white backgrounds fastest, so it's a good idea to open the batch on your desktop.
 3. **Review & approve**: check each draft, fix anything flagged, then **Approve & next** (Ctrl/Cmd+Enter on desktop).
-4. **Upload to Trade Me**: create the file, then on Trade Me go to **My Products → Import photos & products → Import CSV file**.
+4. **Upload to Trade Me**: create the file, then on Trade Me go to **My Products → Import photos & products → Import CSV file**. The import only adds them to My Products: tick the new products and choose **List** to put them on Trade Me.
 5. When items sell, delete old batches to free up storage.
 
 ## Keeping KlickList separate from your other sites

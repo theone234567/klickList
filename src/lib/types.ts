@@ -69,7 +69,7 @@ export interface Prefs {
   priceCheckMin: number;
 }
 
-export interface TmTemplate { headers: string[]; defaults: string[]; loadedAt: string }
+export interface TmTemplate { headers: string[]; defaults: string[]; loadedAt: string; preamble?: string[][] }
 
 export interface Settings {
   prefs: Prefs;
