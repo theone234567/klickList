@@ -114,6 +114,9 @@ progress { width: 100%; accent-color: var(--brand); }
 .controls { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; }
 .shutter { width: 76px; height: 76px; border-radius: 50%; border: 6px solid var(--brand); background: #fff; padding: 0; }
 .shutter:active { transform: scale(0.94); }
+label.shutter { display: block; cursor: pointer; }
+.controls .new-listing { font-size: 1.05rem; padding: 16px 10px; white-space: nowrap; }
+.controls .new-listing:disabled { opacity: 0.45; }
 
 .modal { position: fixed; inset: 0; background: rgb(0 0 0 / 0.5); display: grid; place-items: center; padding: 16px; z-index: 20; }
 .modal .card { width: 100%; max-width: 380px; }
