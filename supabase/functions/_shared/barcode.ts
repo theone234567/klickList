@@ -168,6 +168,21 @@ export function describeBarcode(info: BarcodeInfo | null): string {
   return parts.join(" ");
 }
 
+// Where each region's discs play, so buyers understand the code at a glance.
+const REGION_AREAS: Record<string, string> = {
+  "Region 1": "USA/Canada", "Region 2": "UK/Europe/Japan", "Region 3": "SE Asia", "Region 4": "NZ/Australia",
+  "Region 5": "Russia/India/Africa", "Region 6": "China",
+  "Region A": "Americas/Japan/SE Asia", "Region B": "NZ/Australia/UK/Europe", "Region C": "China/Russia/India",
+};
+
+/** "Region B" -> "Region B (NZ/Australia/UK/Europe)". Anything else is returned unchanged. */
+export function withRegionArea(region: string): string {
+  const m = /^region\s*([1-6abc])$/i.exec(region.trim());
+  if (!m) return region;
+  const key = `Region ${m[1].toUpperCase()}`;
+  return `${key} (${REGION_AREAS[key]})`;
+}
+
 interface ListingLike {
   title: string;
   category_path: string;
@@ -183,12 +198,21 @@ export function applyBarcodeFacts<T extends ListingLike>(listing: T, info: Barco
   const has = (name: string) => attrs.some((a) => a.name.toLowerCase() === name.toLowerCase() && a.value.trim());
   if (info.isbn && !has("ISBN")) attrs.push({ name: "ISBN", value: info.isbn });
   const text = `${listing.title} ${listing.category_path} ${attrs.map((a) => a.value).join(" ")}`.toLowerCase();
-  const isBluRay = /blu-?ray/.test(text);
-  const isDisc = isBluRay || /\bdvd|\bdvds|movies? & tv|film|tv series/.test(text);
-  if (isDisc && !has("Region") && info.dvdRegion) {
-    const region = isBluRay ? info.bluRayRegion : info.dvdRegion;
-    attrs.unshift({ name: "Region", value: `${region} (from barcode)` });
-    if (needs.length < 10) needs.push(`Region worked out from the ${info.country} barcode – check the back cover`);
+  const is4k = /\b4k\b|\buhd\b|ultra hd/.test(text);
+  const isBluRay = is4k || /blu-?ray|bluray/.test(text);
+  const isDisc = isBluRay || /\bdvd|\bdvds|movies?[- &]+tv|film|tv series/.test(text);
+  if (isDisc && !has("Region") && (info.dvdRegion || is4k)) {
+    if (is4k) { // 4K UHD discs are almost always region free, whatever the barcode
+      attrs.unshift({ name: "Region", value: "Region free (4K UHD)" });
+      if (needs.length < 10) needs.push("4K UHD discs are usually region free – check the back cover");
+    } else {
+      const region = (isBluRay ? info.bluRayRegion : info.dvdRegion)!;
+      attrs.unshift({ name: "Region", value: `${withRegionArea(region)} – from barcode` });
+      if (needs.length < 10) needs.push(`Region worked out from the ${info.country} barcode – check the back cover`);
+    }
   }
+  // The AI's own region: add where it plays, e.g. "Region B" -> "Region B (NZ/Australia/UK/Europe)".
+  const i = attrs.findIndex((a) => /^region$/i.test(a.name));
+  if (i >= 0) attrs[i] = { ...attrs[i], value: withRegionArea(attrs[i].value) };
   return { ...listing, attributes: attrs.slice(0, 18), needs_check: needs };
 }

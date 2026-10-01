@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyBarcodeFacts, describeBarcode, normalizeBarcode, regionFromBarcode, validCheckDigit, type BarcodeInfo } from "./barcode";
+import { withRegionArea, applyBarcodeFacts, describeBarcode, normalizeBarcode, regionFromBarcode, validCheckDigit, type BarcodeInfo } from "./barcode";
 
 describe("barcodes", () => {
   it("normalises and checks barcodes", () => {
@@ -27,13 +27,16 @@ const listing = (over: object = {}) => ({ title: "Shrek 2 DVD", category_path: "
 describe("applying barcode facts", () => {
   it("adds a flagged region for DVDs when the AI couldn't see one", () => {
     const out = applyBarcodeFacts(listing(), info({}));
-    expect(out.attributes[0]).toEqual({ name: "Region", value: "Region 4 (from barcode)" });
+    expect(out.attributes[0]).toEqual({ name: "Region", value: "Region 4 (NZ/Australia) – from barcode" });
     expect(out.needs_check[0]).toMatch(/Australia barcode/);
   });
   it("uses Blu-ray regions for Blu-rays and keeps a region the AI read from the cover", () => {
-    expect(applyBarcodeFacts(listing({ title: "Avatar Blu-ray" }), info({})).attributes[0].value).toBe("Region B (from barcode)");
+    expect(applyBarcodeFacts(listing({ title: "Avatar Blu-ray" }), info({})).attributes[0].value).toBe("Region B (NZ/Australia/UK/Europe) – from barcode");
     const seen = listing({ attributes: [{ name: "Region", value: "Region 2" }] });
-    expect(applyBarcodeFacts(seen, info({})).attributes).toEqual([{ name: "Region", value: "Region 2" }]);
+    expect(applyBarcodeFacts(seen, info({})).attributes).toEqual([{ name: "Region", value: "Region 2 (UK/Europe/Japan)" }]);
+    expect(applyBarcodeFacts(listing({ title: "Dune 4K UHD Blu-ray" }), info({})).attributes[0].value).toBe("Region free (4K UHD)");
+    expect(withRegionArea("region b")).toBe("Region B (NZ/Australia/UK/Europe)");
+    expect(withRegionArea("Region free")).toBe("Region free");
   });
   it("adds ISBN for books and leaves non-disc items alone", () => {
     const book = applyBarcodeFacts(listing({ title: "Fantastic Mr Fox paperback", category_path: "Books" }), info({ isbn: "9780140328721", country: null, dvdRegion: null, bluRayRegion: null }));

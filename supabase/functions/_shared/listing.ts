@@ -8,6 +8,7 @@ import {
 } from "./limits.ts";
 export * from "./limits.ts";
 import { fixTitleCase } from "./titlecase.ts";
+import { withRegionArea } from "./barcode.ts";
 
 /** JSON schema sent to the API as a structured-output format. The model can only answer in this shape. */
 export const LISTING_JSON_SCHEMA = {
@@ -57,7 +58,7 @@ title: max 50 chars, Title Case with proper capitals (e.g. "Shrek 2 DVD Region 4
 subtitle: always "" (Trade Me charges for subtitles).
 description: facts only, NZ English, 15-50 words, short plain sentences or "- " lines: what it is (exact title/model/edition/format/size), condition and any flaws, what's included or missing. No sales talk, no opinions or adjectives like great/classic/must-have, no plot or marketing summary, no filler.
 category_path: Trade Me category path, e.g. "Movies-TV > DVDs > Action" or "Books > Fiction-literature > Mystery-thriller".
-brand, region (DVD/Blu-ray/game region if visible), item_type: "" if unknown.
+brand, region (disc/game region if visible: DVD "Region 1"-"Region 6", Blu-ray "Region A"/"Region B"/"Region C", or "Region free"; 4K UHD discs are usually "Region free"), item_type: "" if unknown.
 attributes: other key facts only (format, size, colour, author, artist, ISBN, model), max 6.
 Prices NZD, realistic used Trade Me prices (used DVDs/paperbacks usually $2-$8); buy_now_price 0 if none. price_reasoning: max 12 words.
 weight_kg: packed estimate.
@@ -161,7 +162,7 @@ export function sanitizeListing(raw: unknown): CleanListing {
     .map((a) => ({ name: cleanText(a.name, 40), value: cleanText(a.value, 120) }))
     .filter((a) => a.name && a.value);
   if (r.brand.trim()) attributes.unshift({ name: "Brand", value: cleanText(r.brand, 120) });
-  if (r.region.trim()) attributes.unshift({ name: "Region", value: cleanText(r.region, 40) });
+  if (r.region.trim()) attributes.unshift({ name: "Region", value: withRegionArea(cleanText(r.region, 40)) });
   if (r.item_type.trim()) attributes.unshift({ name: "Type", value: cleanText(r.item_type, 60) });
 
   const start = cleanPrice(r.start_price, false) ?? 1;
