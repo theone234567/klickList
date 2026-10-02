@@ -23,7 +23,8 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
   const [saved, setSaved] = useState(true);
   const [left, setLeft] = useState<number | null>(null);
   const [tm, setTm] = useState<TmOptions | null>(null);
-  useEffect(() => { getSettings().then((x) => setTm(x.prefs.tm)).catch(() => {}); }, []);
+  const [whiteMethod, setWhiteMethod] = useState<"brighten" | "cutout">("brighten");
+  useEffect(() => { getSettings().then((x) => { setTm(x.prefs.tm); setWhiteMethod(x.prefs.whiteMethod); }).catch(() => {}); }, []);
 
   const load = async () => {
     const it = await getItem(itemId);
@@ -155,9 +156,10 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
     if (action === "crop") await updatePhoto(p.id, { crop: null });
     if (action === "white") await updatePhoto(p.id, { use_white: !p.use_white });
     if (action === "makeWhite") {
-      setBusy("Removing background…");
+      setBusy("Whitening background…");
       try {
-        if (!await makeWhite(p)) setError("Couldn't find a clear item in that photo - keeping the original.");
+        const r = await makeWhite(p, whiteMethod);
+        if (r !== true) setError(r);
       } finally {
         setBusy("");
       }

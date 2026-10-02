@@ -117,7 +117,7 @@ export default function BatchView({ batchId, userId }: { batchId: string; userId
         if (!photo) continue;
         whiteFlight.current = true;
         setWhiteBusy(true);
-        makeWhite(photo)
+        makeWhite(photo, prefs.whiteMethod)
           .catch(() => failed.current.add(photo.id))
           .finally(async () => { whiteFlight.current = false; setWhiteBusy(false); await refresh(item.id); });
         break;

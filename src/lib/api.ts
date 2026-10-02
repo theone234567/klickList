@@ -233,13 +233,32 @@ export async function renderPhoto(p: Photo): Promise<Blob> {
 }
 
 // ---------- white backgrounds (runs on this device) ----------
-export async function makeWhite(p: Photo): Promise<boolean> {
+const BRIGHTEN_REASONS = {
+  dark: "Background too dark – shoot on white card or a sheet, in good light.",
+  busy: "Background isn't plain – shoot on plain white or light card.",
+  "no-item": "Couldn't tell the item apart from the background.",
+};
+
+/**
+ * White background for one photo, made on this device. Returns true, or the reason it was skipped
+ * (the original photo is kept). "brighten" only ever changes the plain background, never the item.
+ */
+export async function makeWhite(p: Photo, method: "brighten" | "cutout" = "brighten"): Promise<true | string> {
   const original = await downloadPhoto(p.storage_path);
-  const { whiteBackground } = await import("./bgremove"); // loaded only when needed (keeps the app fast to open)
-  const result = await whiteBackground(original);
+  let result: { main: Blob; thumb: Blob } | null;
+  let reason = "Couldn't find a clear item in that photo – keeping the original.";
+  if (method === "brighten") {
+    const { brightenBackground } = await import("./brighten");
+    const r = await brightenBackground(original);
+    result = "failed" in r ? null : r;
+    if ("failed" in r) reason = BRIGHTEN_REASONS[r.failed];
+  } else {
+    const { whiteBackground } = await import("./bgremove"); // loaded only when needed (keeps the app fast to open)
+    result = await whiteBackground(original);
+  }
   if (!result) {
     ok(await supabase.from("photos").update({ bg_status: "failed" }).eq("id", p.id));
-    return false;
+    return reason;
   }
   const opts = { contentType: "image/jpeg", upsert: true, cacheControl: "60" };
   await retry(async () => check(await supabase.storage.from(BUCKET).upload(whitePath(p.storage_path), result.main, opts)));
