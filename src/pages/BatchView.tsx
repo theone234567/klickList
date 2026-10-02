@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Header from "../components/Header";
 import Thumb from "../components/Thumb";
 import {
-  analyzeItem, deleteBatch, getItem, getSettings, listBatches, listItems, makeWhite, pollEconomy, priceCheck, queueForEconomy, submitEconomy, updateItem,
+  analyzeItem, deleteBatch, deleteItem, getItem, getSettings, listBatches, listItems, makeWhite, pollEconomy, priceCheck, queueForEconomy, submitEconomy, updateItem,
 } from "../lib/api";
 import { itemsToCsv } from "../lib/csv";
 import { DEFAULT_PREFS, type Item, type Photo, type Prefs } from "../lib/types";
@@ -82,6 +82,30 @@ export default function BatchView({ batchId, userId }: { batchId?: string; userI
     loadAll().catch((e) => setError(e.message));
     getSettings().then((s) => setPrefs(s.prefs)).catch(() => {});
   }, [batchId]);
+
+  // Trash button: the item disappears at once and is really deleted after a few seconds, unless you tap Undo.
+  const [trashed, setTrashed] = useState<Item | null>(null);
+  const trashTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const commitTrash = (it: Item) => {
+    deleteItem(it).catch((e) => setError(`Couldn't delete: ${(e as Error).message}`));
+    setAll(itemsRef.current.filter((x) => x.id !== it.id));
+  };
+  function trash(it: Item) {
+    clearTimeout(trashTimer.current);
+    if (trashed) commitTrash(trashed); // deleting another one confirms the previous delete
+    setTrashed(it);
+    trashTimer.current = setTimeout(() => { commitTrash(it); setTrashed(null); }, 6000);
+  }
+  function undoTrash() {
+    clearTimeout(trashTimer.current);
+    setTrashed(null);
+  }
+  const trashedRef = useRef<Item | null>(null);
+  trashedRef.current = trashed;
+  useEffect(() => () => { // leaving the page confirms a pending delete
+    clearTimeout(trashTimer.current);
+    if (trashedRef.current) deleteItem(trashedRef.current).catch(() => {});
+  }, []);
 
   async function removeGroup(id: string, label: string) {
     const count = itemsRef.current.filter((x) => x.batch_id === id).length;
@@ -198,7 +222,7 @@ export default function BatchView({ batchId, userId }: { batchId?: string; userI
   const priceLeft = list.filter((i) => needsPrice(i, prefs) && !failed.current.has(`p${i.id}`)).length;
   const drafts = list.filter((i) => i.status === "draft" && i.ai_status === "done");
   const approved = list.filter((i) => i.status === "ready").length;
-  const shown = list.filter((i) =>
+  const shown = list.filter((i) => i.id !== trashed?.id).filter((i) =>
     filter === "all" ? true
       : filter === "review" ? i.status === "draft"
       : filter === "ready" ? i.status === "ready"
@@ -292,6 +316,8 @@ export default function BatchView({ batchId, userId }: { batchId?: string; userI
           <ul className="grid">
             {g.items.map((i) => (
               <li key={i.id} className="card tile">
+                <button className="tile-trash" aria-label={`Delete ${i.title || "item"}`} title="Delete"
+                  onClick={() => trash(i)} disabled={running.has(i.id)}>🗑</button>
                 <a href={`#/i/${i.id}`}>
                   <Thumb photo={i.photos[0]} />
                   <div className="tile-body">
@@ -317,6 +343,12 @@ export default function BatchView({ batchId, userId }: { batchId?: string; userI
           </section>
         ))}
       </main>
+      {trashed && (
+        <div className="snackbar" role="status">
+          <span className="grow">Deleted “{trashed.title || "item"}”</span>
+          <button className="link" onClick={undoTrash}>Undo</button>
+        </div>
+      )}
     </>
   );
 }
