@@ -8,7 +8,7 @@ import type { Item } from "../lib/types";
 const SELL_URL = "https://www.trademe.co.nz/a/sell";
 
 /** One item at a time: copy each field, grab the photos, list on Trade Me, mark done, next. */
-export default function QuickList({ batchId }: { batchId: string }) {
+export default function QuickList({ batchId }: { batchId?: string }) {
   const [items, setItems] = useState<Item[] | null>(null);
   const [includeDrafts, setIncludeDrafts] = useState(false);
   const [idx, setIdx] = useState(0);
@@ -73,7 +73,7 @@ export default function QuickList({ batchId }: { batchId: string }) {
 
   return (
     <>
-      <Header back={`#/b/${batchId}`} title="Copy-paste mode" right={queue.length ? <span className="badge">{Math.min(idx, queue.length - 1) + 1}/{queue.length}</span> : null} />
+      <Header back={batchId ? `#/b/${batchId}` : "#/"} title="Copy-paste mode" right={queue.length ? <span className="badge">{Math.min(idx, queue.length - 1) + 1}/{queue.length}</span> : null} />
       <main className="page">
         <label className="row small">
           <input type="checkbox" checked={includeDrafts} onChange={(e) => { setIncludeDrafts(e.target.checked); setIdx(0); }} />

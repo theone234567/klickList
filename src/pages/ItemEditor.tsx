@@ -33,7 +33,7 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
     setDraft(it);
     setSaved(true);
     if (review) {
-      const all = await listItems(it.batch_id);
+      const all = await listItems();
       setLeft(all.filter((i) => i.status === "draft").length);
     }
   };
@@ -74,7 +74,7 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
   }
 
   async function nextDraft(): Promise<string | null> {
-    const all = await listItems(draft!.batch_id);
+    const all = await listItems(); // review walks through every draft, whichever day it was photographed
     const idx = all.findIndex((i) => i.id === draft!.id);
     const after = [...all.slice(idx + 1), ...all.slice(0, idx)];
     return after.find((i) => i.status === "draft")?.id ?? null;
@@ -88,13 +88,13 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
     await save({ status: "ready" });
     if (review) {
       const next = await nextDraft();
-      go(next ? `#/i/${next}/review` : `#/b/${draft!.batch_id}`);
+      go(next ? `#/i/${next}/review` : "#/");
     }
   }
 
   async function skip() {
     const next = await nextDraft();
-    go(next ? `#/i/${next}/review` : `#/b/${draft!.batch_id}`);
+    go(next ? `#/i/${next}/review` : "#/");
   }
 
   async function setStatus(status: ItemStatus) {
@@ -149,7 +149,7 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
   async function removeItem() {
     if (!confirm("Delete this item and its photos?")) return;
     await deleteItem(item!);
-    go(`#/b/${item!.batch_id}`);
+    go("#/");
   }
 
   async function photoAction(p: Photo, action: "rotate" | "crop" | "delete" | "first" | "white" | "makeWhite") {
@@ -188,7 +188,7 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
   const money = (n: number | null) => (n === null ? "?" : `$${Number(n).toFixed(n % 1 ? 2 : 0)}`);
   return (
     <>
-      <Header back={`#/b/${draft.batch_id}`} title={review ? `Review${left !== null ? ` · ${left} left` : ""}` : "Edit item"} right={
+      <Header back="#/" title={review ? `Review${left !== null ? ` · ${left} left` : ""}` : "Edit item"} right={
         <button className="link" disabled={saved || !!busy} onClick={() => save()}>{saved ? "Saved" : "Save"}</button>
       } />
       <main className="page editor">

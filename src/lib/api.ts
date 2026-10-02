@@ -26,6 +26,15 @@ export async function listBatches(): Promise<(Batch & { items: { count: number }
   return check(await supabase.from("batches").select("id,name,created_at,items(count)").order("created_at", { ascending: false }));
 }
 
+/** Today's photo group ("2 Oct 2026"), created the first time you take photos today. */
+export async function todayBatch(): Promise<Batch> {
+  const name = new Date().toLocaleDateString("en-NZ", { day: "numeric", month: "short", year: "numeric" });
+  const { data } = await supabase.from("batches").select("id,name,created_at").eq("name", name)
+    .order("created_at", { ascending: false }).limit(1);
+  if (data?.length) return data[0] as Batch;
+  return createBatch(name);
+}
+
 export async function createBatch(name: string): Promise<Batch> {
   return check(await supabase.from("batches").insert({ name: name.trim().slice(0, 80) || "New batch" }).select().single());
 }
@@ -38,9 +47,12 @@ export async function deleteBatch(id: string): Promise<void> {
 }
 
 // ---------- items ----------
-export async function listItems(batchId: string): Promise<Item[]> {
-  const rows = check(await supabase.from("items").select("*, photos(*)").eq("batch_id", batchId)
-    .order("position").order("position", { referencedTable: "photos" }));
+/** Items of one photo group, or all your items (newest group first) when no group is given. */
+export async function listItems(batchId?: string): Promise<Item[]> {
+  let q = supabase.from("items").select("*, photos(*)");
+  if (batchId) q = q.eq("batch_id", batchId);
+  else q = q.order("created_at", { ascending: false });
+  const rows = check(await q.order("position").order("position", { referencedTable: "photos" }).limit(2000));
   return rows as Item[];
 }
 

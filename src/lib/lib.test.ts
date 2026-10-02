@@ -55,6 +55,9 @@ describe("router", () => {
     expect(parseRoute(`#/i/${id}`)).toEqual({ name: "item", id, review: false });
     expect(parseRoute(`#/i/${id}/review`)).toEqual({ name: "item", id, review: true });
     expect(parseRoute(`#/b/${id}/export`)).toEqual({ name: "export", id });
-    expect(parseRoute("#/b/<script>")).toEqual({ name: "batches" });
+    expect(parseRoute("#/capture")).toEqual({ name: "capture" });
+    expect(parseRoute("#/export")).toEqual({ name: "export" });
+    expect(parseRoute("#/list")).toEqual({ name: "quicklist" });
+    expect(parseRoute("#/b/<script>")).toEqual({ name: "home" });
   });
 });

@@ -17,7 +17,8 @@ function download(data: BlobPart, name: string, type: string) {
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 
-export default function ExportPage({ batchId, userId }: { batchId: string; userId: string }) {
+/** Without a batchId: every approved item. */
+export default function ExportPage({ batchId, userId }: { batchId?: string; userId: string }) {
   const [items, setItems] = useState<Item[] | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [mode, setMode] = useState<PhotoMode>("links");
@@ -87,12 +88,12 @@ export default function ExportPage({ batchId, userId }: { batchId: string; userI
 
   async function markListed() {
     await markExported(done ?? [], true);
-    location.hash = `#/b/${batchId}`;
+    location.hash = batchId ? `#/b/${batchId}` : "#/";
   }
 
   return (
     <>
-      <Header back={`#/b/${batchId}`} title="Upload to Trade Me" />
+      <Header back={batchId ? `#/b/${batchId}` : "#/"} title="Upload to Trade Me" />
       <main className="page narrow-wide">
         <div className="card stack">
           <b>{approved.length} approved item{approved.length === 1 ? "" : "s"} ready to export</b>

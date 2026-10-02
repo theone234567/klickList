@@ -67,7 +67,7 @@ npm run typecheck
 
 ```
 src/                         React web app (Vite + TypeScript)
-  pages/                     Login, Batches, Capture, BatchView, ItemEditor, QuickList
+  pages/                     Login, BatchView (home: all items by day), Capture, ItemEditor, Export, QuickList, Settings
   lib/image.ts               on-device photo tidy-up, AI thumbnails, barcode reading
 supabase/migrations/         database tables, security rules, private photo bucket
 supabase/functions/analyze-item/   writes listings (the AI key is only used server-side)

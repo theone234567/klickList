@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import Header from "../components/Header";
-import { addPhoto, createItem, listItems } from "../lib/api";
+import { addPhoto, createItem, listItems, todayBatch } from "../lib/api";
 import { previewUrl, processPhoto, type Processed } from "../lib/image";
 import type { Item } from "../lib/types";
 
@@ -9,10 +9,15 @@ import type { Item } from "../lib/types";
  * Uses the live camera inside the page; if that isn't possible, the phone's own camera (one photo at a time).
  * Photos are tidied and uploaded in the background so you never wait.
  */
-export default function Capture({ batchId, userId }: { batchId: string; userId: string }) {
+/** Without a batchId, photos go into today's group (created automatically). */
+export default function Capture({ batchId, userId }: { batchId?: string; userId: string }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [cameraOk, setCameraOk] = useState<boolean | null>(null);
   const [cameraError, setCameraError] = useState("");
+  // Zoom with buttons instead of pinching the page (which pushes the shutter off-screen).
+  // Uses the camera's own zoom where the phone supports it, otherwise crops the middle of the picture.
+  const [zoom, setZoom] = useState(1);
+  const hwZoom = useRef<{ min: number; max: number } | null>(null);
   const [pending, setPending] = useState(0);
   const [itemCount, setItemCount] = useState(0);
   const [shots, setShots] = useState<string[]>([]); // local previews for the current item
@@ -25,11 +30,17 @@ export default function Capture({ batchId, userId }: { batchId: string; userId: 
   const current = useRef<{ item: Item; photos: number } | null>(null);
   const nextPos = useRef(0);
 
+  const home = batchId ? `#/b/${batchId}` : "#/";
+  const group = useRef<Promise<string> | null>(null);
   useEffect(() => {
-    listItems(batchId).then((items) => {
-      nextPos.current = items.reduce((m, i) => Math.max(m, i.position + 1), 0);
-      setItemCount(items.length);
-    }).catch((e) => setError(e.message));
+    group.current = batchId ? Promise.resolve(batchId) : todayBatch().then((b) => b.id);
+    group.current
+      .then((id) => listItems(id))
+      .then((items) => {
+        nextPos.current = items.reduce((m, i) => Math.max(m, i.position + 1), 0);
+        setItemCount(items.length);
+      })
+      .catch((e) => setError(e.message));
   }, [batchId]);
 
   // camera
@@ -52,6 +63,10 @@ export default function Capture({ batchId, userId }: { batchId: string; userId: 
         videoRef.current.srcObject = stream.current;
         await videoRef.current.play();
       }
+      const track = stream.current.getVideoTracks()[0];
+      const caps = (track?.getCapabilities?.() ?? {}) as { zoom?: { min: number; max: number } };
+      hwZoom.current = caps.zoom && caps.zoom.max > caps.zoom.min ? caps.zoom : null;
+      setZoom(1);
       setCameraOk(true);
     } catch (e) {
       const name = (e as Error).name;
@@ -87,7 +102,7 @@ export default function Capture({ batchId, userId }: { batchId: string; userId: 
   /** `processing` has already started (in the background), so saving only waits for the upload. */
   async function addToCurrent(processing: Promise<Processed>) {
     if (!current.current) {
-      const item = await createItem(batchId, nextPos.current++);
+      const item = await createItem(await group.current!, nextPos.current++);
       current.current = { item, photos: 0 };
       setItemCount((n) => n + 1);
     }
@@ -95,13 +110,28 @@ export default function Capture({ batchId, userId }: { batchId: string; userId: 
     await addPhoto(userId, cur.item, await processing, cur.photos++);
   }
 
+  async function changeZoom(z: number) {
+    setZoom(z);
+    const track = stream.current?.getVideoTracks()[0];
+    const hw = hwZoom.current;
+    if (track && hw) {
+      const value = Math.min(hw.max, Math.max(hw.min, hw.min * z));
+      await track.applyConstraints({ advanced: [{ zoom: value } as MediaTrackConstraintSet] }).catch(() => { hwZoom.current = null; });
+    }
+  }
+  const digitalZoom = hwZoom.current ? 1 : zoom;
+
   async function shoot() {
     const v = videoRef.current;
     if (!v || !v.videoWidth) return;
     setFlash(true);
     setTimeout(() => setFlash(false), 120);
     // Grab the frame straight from the camera (no JPEG round-trip), then tidy it in a background worker.
-    const frame = await createImageBitmap(v);
+    // With digital zoom, keep just the middle of the picture - exactly what the viewfinder shows.
+    const sw = v.videoWidth / digitalZoom, sh = v.videoHeight / digitalZoom;
+    const frame = digitalZoom > 1
+      ? await createImageBitmap(v, (v.videoWidth - sw) / 2, (v.videoHeight - sh) / 2, sw, sh)
+      : await createImageBitmap(v);
     const url = await previewUrl(frame);
     setShots((s) => [...s, url]);
     const processing = processPhoto(frame);
@@ -156,7 +186,7 @@ export default function Capture({ batchId, userId }: { batchId: string; userId: 
 
   return (
     <>
-      <Header back={`#/b/${batchId}`} title={`${itemCount} item${itemCount === 1 ? "" : "s"}`} right={pending > 0 ? <span className="badge">⬆ {pending}</span> : <span className="badge ok">✓ saved</span>} />
+      <Header back={home} title={`${batchId ? "" : "Today: "}${itemCount} item${itemCount === 1 ? "" : "s"}`} right={pending > 0 ? <span className="badge">⬆ {pending}</span> : <span className="badge ok">✓ saved</span>} />
       <main
         className={`capture ${dragging ? "dragging" : ""}`}
         onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
@@ -165,7 +195,14 @@ export default function Capture({ batchId, userId }: { batchId: string; userId: 
       >
         {cameraOk !== false ? (
           <div className={`viewfinder ${flash ? "flash" : ""}`}>
-            <video ref={videoRef} playsInline muted />
+            <video ref={videoRef} playsInline muted style={digitalZoom > 1 ? { transform: `scale(${digitalZoom})` } : undefined} />
+            {cameraOk && (
+              <div className="zoom">
+                {[1, 2, 3].map((z) => (
+                  <button key={z} className={zoom === z ? "on" : ""} onClick={() => changeZoom(z)}>{z}×</button>
+                ))}
+              </div>
+            )}
           </div>
         ) : (
           <div className="card stack center">
@@ -181,10 +218,15 @@ export default function Capture({ batchId, userId }: { batchId: string; userId: 
         </div>
 
         <div className="controls">
-          <label className="button">
-            Gallery
-            <input hidden type="file" accept="image/*" multiple onChange={(e) => { onFiles(e.target.files); e.target.value = ""; }} />
-          </label>
+          <div className="stack controls-left">
+            {pending > 0
+              ? <button className="button" disabled>Saving {pending}…</button>
+              : <a className="button" href={home}>✓ Done</a>}
+            <label className="link small">
+              Gallery
+              <input hidden type="file" accept="image/*" multiple onChange={(e) => { onFiles(e.target.files); e.target.value = ""; }} />
+            </label>
+          </div>
           {cameraOk !== false
             ? <button className="shutter" onClick={shoot} disabled={!cameraOk} aria-label="Take photo" />
             : (
@@ -196,9 +238,6 @@ export default function Capture({ batchId, userId }: { batchId: string; userId: 
             New listing ›
           </button>
         </div>
-        {pending > 0
-          ? <button className="button wide" disabled>Saving {pending} photo{pending > 1 ? "s" : ""}…</button>
-          : <a className="button wide" href={`#/b/${batchId}`}>Done – write my listings</a>}
         {error && <p className="error">{error}</p>}
       </main>
 
