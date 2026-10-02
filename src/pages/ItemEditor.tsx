@@ -337,7 +337,6 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
                 {draft.status !== "ready" && <button className="button primary grow" disabled={!!busy} onClick={() => approve().catch(() => {})} title="Ctrl/Cmd + Enter">✓ Approve</button>}
                 {draft.status === "ready" && <button className="button grow" onClick={() => setStatus("draft")}>Back to draft</button>}
                 {draft.status !== "listed" && <button className="button" onClick={() => setStatus("listed")}>Listed</button>}
-                {draft.status !== "sold" && <button className="button" onClick={() => setStatus("sold")}>Sold</button>}
               </>
             )}
           </div>
