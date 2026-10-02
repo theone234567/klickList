@@ -86,7 +86,14 @@ button:disabled, .button:disabled { opacity: 0.5; cursor: default; }
 progress { width: 100%; accent-color: var(--brand); }
 
 .grid { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
-.tile { padding: 0; overflow: hidden; }
+.tile { padding: 0; overflow: hidden; position: relative; }
+.tile-trash { position: absolute; top: 6px; right: 6px; z-index: 2; width: 36px; height: 36px; border-radius: 50%; border: 0;
+  background: rgba(255,255,255,.92); box-shadow: 0 1px 4px rgba(0,0,0,.25); font-size: 1rem; padding: 0; cursor: pointer; }
+.tile-trash:disabled { opacity: .4; }
+.snackbar { position: fixed; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 30;
+  display: flex; gap: 16px; align-items: center; background: #111827; color: #fff; padding: 12px 16px; border-radius: 12px;
+  width: min(92vw, 480px); box-shadow: 0 4px 16px rgba(0,0,0,.3); }
+.snackbar .link { color: #93c5fd; font-weight: 700; }
 .tile a { color: inherit; display: block; }
 .tile-body { padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; }
 .tile-err { padding: 0 10px 8px; color: var(--danger); display: flex; align-items: center; justify-content: space-between; }
