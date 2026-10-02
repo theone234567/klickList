@@ -13,6 +13,7 @@ import { ideasOf, type PriceIdea } from "../../supabase/functions/_shared/ideas"
 import { fixTitleCase } from "../../supabase/functions/_shared/titlecase";
 import { tmSummary } from "../lib/trademe";
 import { priceSearchLinks } from "../lib/searchLinks";
+import { clearUndo, nextReady, pendingUndo, prefetchPhotos, rememberApproved, reviewProgress } from "../lib/review";
 import type { TmOptions } from "../lib/types";
 
 /** Edit one listing. In review mode, "Approve & next" walks through every draft in the batch. */
@@ -23,6 +24,7 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(true);
   const [left, setLeft] = useState<number | null>(null);
+  const [undo, setUndo] = useState<{ id: string; title: string } | null>(null);
   const [tm, setTm] = useState<TmOptions | null>(null);
   const [whiteMethod, setWhiteMethod] = useState<"brighten" | "cutout">("brighten");
   useEffect(() => { getSettings().then((x) => { setTm(x.prefs.tm); setWhiteMethod(x.prefs.whiteMethod); }).catch(() => {}); }, []);
@@ -32,12 +34,20 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
     setItem(it);
     setDraft(it);
     setSaved(true);
-    if (review) {
-      const all = await listItems();
-      setLeft(all.filter((i) => i.status === "draft").length);
-    }
+    const r = nextReady(await listItems(), itemId);
+    setLeft(r.left);
+    prefetchPhotos(r.next); // so "Approve & next" opens instantly
   };
   useEffect(() => { load().catch((e) => setError(e.message)); }, [itemId]);
+
+  // "Approved '…' · Undo" for a few seconds after moving on.
+  useEffect(() => {
+    const u = pendingUndo(itemId);
+    setUndo(u);
+    if (!u) return;
+    const t = setTimeout(() => setUndo(null), u.msLeft);
+    return () => clearTimeout(t);
+  }, [itemId]);
 
   // Desktop shortcut: Ctrl/Cmd + Enter = approve (& next in review mode)
   useEffect(() => {
@@ -73,11 +83,17 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
     }
   }
 
-  async function nextDraft(): Promise<string | null> {
-    const all = await listItems(); // review walks through every draft, whichever day it was photographed
-    const idx = all.findIndex((i) => i.id === draft!.id);
-    const after = [...all.slice(idx + 1), ...all.slice(0, idx)];
-    return after.find((i) => i.status === "draft")?.id ?? null;
+  /** Next listing the AI has finished (any day), or home with the "all reviewed" message. */
+  async function goNext() {
+    const { next } = nextReady(await listItems(), draft!.id);
+    go(next ? `#/i/${next.id}/review` : "#/?done");
+  }
+
+  async function undoApprove() {
+    if (!undo) return;
+    clearUndo();
+    await updateItem(undo.id, { status: "draft" });
+    go(`#/i/${undo.id}/review`);
   }
 
   async function approve() {
@@ -86,15 +102,12 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
     if (!draft!.start_price || draft!.start_price < 0.5) return setError("Type a start price first (at least $0.50) – see the price ideas.");
     if (draft!.buy_now_price !== null && draft!.buy_now_price < draft!.start_price) return setError("Buy Now must be at least the start price.");
     await save({ status: "ready" });
-    if (review) {
-      const next = await nextDraft();
-      go(next ? `#/i/${next}/review` : "#/");
-    }
+    rememberApproved(draft!.id, draft!.title);
+    await goNext(); // always move on - one tap per listing
   }
 
   async function skip() {
-    const next = await nextDraft();
-    go(next ? `#/i/${next}/review` : "#/");
+    await goNext();
   }
 
   async function setStatus(status: ItemStatus) {
@@ -188,7 +201,7 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
   const money = (n: number | null) => (n === null ? "?" : `$${Number(n).toFixed(n % 1 ? 2 : 0)}`);
   return (
     <>
-      <Header back="#/" title={review ? `Review${left !== null ? ` · ${left} left` : ""}` : "Edit item"} right={
+      <Header back="#/" title={review && left ? `Review · ${reviewProgress(left)}` : review ? "Review" : "Edit item"} right={
         <button className="link" disabled={saved || !!busy} onClick={() => save()}>{saved ? "Saved" : "Save"}</button>
       } />
       <main className="page editor">
@@ -221,6 +234,12 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
         <div className="editor-form stack">
           {draft.ai_error && <p className="error">{draft.ai_error}</p>}
           {draft.ai_provider && <p className="muted small">Written by {draft.ai_provider === "gemini" ? "Gemini" : "Claude"}</p>}
+          {undo && (
+            <p className="card row small undo">
+              <span className="grow">✓ Approved “{undo.title}”</span>
+              <button className="link" onClick={() => undoApprove().catch((e) => setError(e.message))}>Undo</button>
+            </p>
+          )}
           {error && <p className="error">{error}</p>}
           {busy && <p className="muted">{busy}</p>}
 
@@ -334,7 +353,7 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
               </>
             ) : (
               <>
-                {draft.status !== "ready" && <button className="button primary grow" disabled={!!busy} onClick={() => approve().catch(() => {})} title="Ctrl/Cmd + Enter">✓ Approve</button>}
+                {draft.status !== "ready" && <button className="button primary grow" disabled={!!busy} onClick={() => approve().catch(() => {})} title="Ctrl/Cmd + Enter">✓ Approve &amp; next ›</button>}
                 {draft.status === "ready" && <button className="button grow" onClick={() => setStatus("draft")}>Back to draft</button>}
                 {draft.status !== "listed" && <button className="button" onClick={() => setStatus("listed")}>Listed</button>}
               </>

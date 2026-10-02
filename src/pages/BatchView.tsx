@@ -8,6 +8,7 @@ import { itemsToCsv } from "../lib/csv";
 import { DEFAULT_PREFS, type Item, type Photo, type Prefs } from "../lib/types";
 import { aiStart, ideasOf } from "../../supabase/functions/_shared/ideas";
 import { supabase } from "../lib/supabase";
+import { nextReady, startReviewRun } from "../lib/review";
 
 const AI_CONCURRENCY = 3;
 const PRICE_CONCURRENCY = 2;
@@ -52,6 +53,9 @@ export default function BatchView({ batchId, userId }: { batchId?: string; userI
   const [whiteBusy, setWhiteBusy] = useState(false);
   const [filter, setFilter] = useState<Filter>("all");
   const [groups, setGroups] = useState<Map<string, string>>(new Map()); // photo group id -> name
+  // Arrived here after reviewing the last listing ("#/?done"): show the finished message once.
+  const [finished, setFinished] = useState(() => location.hash.includes("done"));
+  useEffect(() => { if (finished) history.replaceState(null, "", "#/"); }, [finished]);
   const itemsRef = useRef<Item[]>([]);
   const inFlight = useRef(new Set<string>());
   const priceFlight = useRef(new Set<string>());
@@ -207,6 +211,7 @@ export default function BatchView({ batchId, userId }: { batchId?: string; userI
   }
   for (const g of grouped) g.items.sort((a, b) => a.position - b.position);
   const base = batchId ? `#/b/${batchId}` : "#";
+  const reviewStart = nextReady(list, null);
   const busyAnything = waiting > 0 || whiteLeft > 0 || priceLeft > 0;
 
   return (
@@ -215,6 +220,16 @@ export default function BatchView({ batchId, userId }: { batchId?: string; userI
         batchId ? null : <><a className="link" href="#/settings">Settings</a><button className="link" onClick={() => supabase.auth.signOut()}>Sign out</button></>
       } />
       <main className="page">
+        {finished && (
+          <div className="card stack done-box">
+            <b>✓ All reviewed{approved ? ` – ${approved} ready to upload` : ""}</b>
+            {reviewStart.writing > 0 && <span className="small muted">{reviewStart.writing} still being written by the AI – check back shortly.</span>}
+            <div className="row wrap">
+              {approved > 0 && <a className="button primary grow" href={`${base}/export`}>⬆ Upload to Trade Me ({approved})</a>}
+              <button className="link" onClick={() => setFinished(false)}>Close</button>
+            </div>
+          </div>
+        )}
         <a className="button primary wide" href={`${base}/capture`}>📷 New listing</a>
         <div className="card stack">
           <div className="row wrap">
@@ -241,7 +256,10 @@ export default function BatchView({ batchId, userId }: { batchId?: string; userI
             </span>
           )}
           <div className="row wrap">
-            <button className="button primary grow" disabled={!drafts.length} onClick={() => { location.hash = `#/i/${drafts[0].id}/review`; }}>
+            <button className="button primary grow" disabled={!reviewStart.next} onClick={() => {
+              startReviewRun(reviewStart.left);
+              location.hash = `#/i/${reviewStart.next!.id}/review`;
+            }}>
               ✓ Review &amp; approve ({drafts.length})
             </button>
             <a className={`button grow ${approved ? "primary" : ""}`} href={`${base}/export`}>⬆ Upload to Trade Me ({approved})</a>

@@ -158,3 +158,5 @@ label.shutter { display: block; cursor: pointer; }
 .next-link:active { background: var(--brand); color: #fff; }
 .search-links { gap: 6px; }
 .search-links .button { padding: 6px 10px; }
+.done-box { border: 2px solid var(--brand); }
+.undo { margin: 0; padding: 8px 12px; }
