@@ -12,6 +12,7 @@ import { CONDITIONS, DESCRIPTION_MAX, SHIPPING_SIZES, TITLE_MAX } from "../../su
 import { ideasOf, type PriceIdea } from "../../supabase/functions/_shared/ideas";
 import { fixTitleCase } from "../../supabase/functions/_shared/titlecase";
 import { tmSummary } from "../lib/trademe";
+import { priceSearchLinks } from "../lib/searchLinks";
 import type { TmOptions } from "../lib/types";
 
 /** Edit one listing. In review mode, "Approve & next" walks through every draft in the batch. */
@@ -269,6 +270,16 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
             </div>
             <div className="card small stack price-box">
               <b>Price ideas</b>
+              {priceSearchLinks(draft).length > 0 && (
+                <div className="stack">
+                  <span className="muted">Look it up (opens in a new tab), then type your price:</span>
+                  <div className="row wrap search-links">
+                    {priceSearchLinks(draft).map((l) => (
+                      <a key={l.label} className="button small" href={l.url} target="_blank" rel="noopener noreferrer nofollow" title={l.hint}>{l.label} ↗</a>
+                    ))}
+                  </div>
+                </div>
+              )}
               {ideas.map((idea) => (
                 <div key={idea.kind} className="stack">
                   <span>

@@ -146,3 +146,5 @@ label.shutter { display: block; cursor: pointer; }
 .next-link { margin-left: auto; background: none; border: 2px solid var(--brand); color: var(--brand); border-radius: 99px;
   padding: 10px 18px; font-weight: 800; font-size: 1rem; white-space: nowrap; }
 .next-link:active { background: var(--brand); color: #fff; }
+.search-links { gap: 6px; }
+.search-links .button { padding: 6px 10px; }
