@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 
+// No id = all items (the normal case). Old "#/b/<id>" links still open that one photo group.
 export type Route =
-  | { name: "batches" }
+  | { name: "home" }
   | { name: "batch"; id: string }
-  | { name: "capture"; id: string }
-  | { name: "quicklist"; id: string }
-  | { name: "export"; id: string }
+  | { name: "capture"; id?: string }
+  | { name: "quicklist"; id?: string }
+  | { name: "export"; id?: string }
   | { name: "item"; id: string; review: boolean }
   | { name: "settings" };
 
@@ -18,8 +19,11 @@ export function parseRoute(hash: string): Route {
   if ((m = hash.match(new RegExp(`^#/b/(${UUID})/list$`)))) return { name: "quicklist", id: m[1] };
   if ((m = hash.match(new RegExp(`^#/b/(${UUID})/export$`)))) return { name: "export", id: m[1] };
   if ((m = hash.match(new RegExp(`^#/i/(${UUID})(/review)?$`)))) return { name: "item", id: m[1], review: !!m[2] };
+  if (hash === "#/capture") return { name: "capture" };
+  if (hash === "#/list") return { name: "quicklist" };
+  if (hash === "#/export") return { name: "export" };
   if (hash === "#/settings") return { name: "settings" };
-  return { name: "batches" };
+  return { name: "home" };
 }
 
 export function go(hash: string): void {

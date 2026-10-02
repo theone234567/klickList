@@ -26,6 +26,15 @@ export async function listBatches(): Promise<(Batch & { items: { count: number }
   return check(await supabase.from("batches").select("id,name,created_at,items(count)").order("created_at", { ascending: false }));
 }
 
+/** Today's photo group ("2 Oct 2026"), created the first time you take photos today. */
+export async function todayBatch(): Promise<Batch> {
+  const name = new Date().toLocaleDateString("en-NZ", { day: "numeric", month: "short", year: "numeric" });
+  const { data } = await supabase.from("batches").select("id,name,created_at").eq("name", name)
+    .order("created_at", { ascending: false }).limit(1);
+  if (data?.length) return data[0] as Batch;
+  return createBatch(name);
+}
+
 export async function createBatch(name: string): Promise<Batch> {
   return check(await supabase.from("batches").insert({ name: name.trim().slice(0, 80) || "New batch" }).select().single());
 }
@@ -38,9 +47,12 @@ export async function deleteBatch(id: string): Promise<void> {
 }
 
 // ---------- items ----------
-export async function listItems(batchId: string): Promise<Item[]> {
-  const rows = check(await supabase.from("items").select("*, photos(*)").eq("batch_id", batchId)
-    .order("position").order("position", { referencedTable: "photos" }));
+/** Items of one photo group, or all your items (newest group first) when no group is given. */
+export async function listItems(batchId?: string): Promise<Item[]> {
+  let q = supabase.from("items").select("*, photos(*)");
+  if (batchId) q = q.eq("batch_id", batchId);
+  else q = q.order("created_at", { ascending: false });
+  const rows = check(await q.order("position").order("position", { referencedTable: "photos" }).limit(2000));
   return rows as Item[];
 }
 
@@ -233,13 +245,32 @@ export async function renderPhoto(p: Photo): Promise<Blob> {
 }
 
 // ---------- white backgrounds (runs on this device) ----------
-export async function makeWhite(p: Photo): Promise<boolean> {
+const BRIGHTEN_REASONS = {
+  dark: "Background too dark – shoot on white card or a sheet, in good light.",
+  busy: "Background isn't plain – shoot on plain white or light card.",
+  "no-item": "Couldn't tell the item apart from the background.",
+};
+
+/**
+ * White background for one photo, made on this device. Returns true, or the reason it was skipped
+ * (the original photo is kept). "brighten" only ever changes the plain background, never the item.
+ */
+export async function makeWhite(p: Photo, method: "brighten" | "cutout" = "brighten"): Promise<true | string> {
   const original = await downloadPhoto(p.storage_path);
-  const { whiteBackground } = await import("./bgremove"); // loaded only when needed (keeps the app fast to open)
-  const result = await whiteBackground(original);
+  let result: { main: Blob; thumb: Blob } | null;
+  let reason = "Couldn't find a clear item in that photo – keeping the original.";
+  if (method === "brighten") {
+    const { brightenBackground } = await import("./brighten");
+    const r = await brightenBackground(original);
+    result = "failed" in r ? null : r;
+    if ("failed" in r) reason = BRIGHTEN_REASONS[r.failed];
+  } else {
+    const { whiteBackground } = await import("./bgremove"); // loaded only when needed (keeps the app fast to open)
+    result = await whiteBackground(original);
+  }
   if (!result) {
     ok(await supabase.from("photos").update({ bg_status: "failed" }).eq("id", p.id));
-    return false;
+    return reason;
   }
   const opts = { contentType: "image/jpeg", upsert: true, cacheControl: "60" };
   await retry(async () => check(await supabase.storage.from(BUCKET).upload(whitePath(p.storage_path), result.main, opts)));

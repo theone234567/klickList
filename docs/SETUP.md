@@ -98,11 +98,11 @@ Open the site → **Share → Add to Home Screen** (iPhone) or **⋮ → Install
 
 ## Everyday use
 
-1. **New batch**, then snap items on your phone: 1–3 photos each, then **Next item**. Photo 1 should be the front and photo 2 the back or label. On a computer you can drag & drop photos instead.
-2. Tap **Done**. The AI writes all the listings. In economy mode they arrive within minutes to an hour, and you can close the app while you wait. White backgrounds and price checks run while the batch page is open. A computer does white backgrounds fastest, so it's a good idea to open the batch on your desktop.
-3. **Review & approve**: check each draft, fix anything flagged, then **Approve & next** (Ctrl/Cmd+Enter on desktop).
-4. **Upload to Trade Me**: create the file, then on Trade Me go to **My Products → Import photos & products → Import CSV file**. The import only adds them to My Products: tick the new products and choose **List** to put them on Trade Me.
-5. When items sell, delete old batches to free up storage.
+1. Tap **📷 New listing** and snap your items: 1–3 photos each, then **New listing ›** for the next item. Photo 1 should be the front and photo 2 the back or label. Use the **1× 2× 3×** buttons to zoom. On a computer you can drag & drop photos instead.
+2. Tap **✓ Done**. The AI writes all the listings. In economy mode they arrive within minutes to an hour, and you can close the app while you wait. White backgrounds and price checks run while the home screen is open; a computer does white backgrounds fastest.
+3. **Review & approve**: check each draft, type the price, fix anything flagged, then **Approve & next** (Ctrl/Cmd+Enter on desktop).
+4. **Upload to Trade Me**: creates one file with every approved item. On Trade Me go to **My Products → Import photos & products → Import CSV file**. The import only adds them to My Products: tick the new products and choose **List**.
+5. Items are grouped by the day you photographed them. Delete a whole day when you've finished with it, to free up storage.
 
 ## Keeping KlickList separate from your other sites
 

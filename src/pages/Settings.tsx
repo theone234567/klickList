@@ -73,7 +73,11 @@ export default function SettingsPage() {
 
         <section className="card stack">
           <b>White backgrounds</b>
-          <p className="muted small">Done free on your device (desktop is fastest). The first time downloads a 44 MB model.</p>
+          <p className="muted small">Done free on your device. Best results: shoot items on plain white or light card (or a sheet) in daylight.</p>
+          <label className="row"><input type="radio" checked={s.prefs.whiteMethod === "brighten"} onChange={() => setPrefs({ whiteMethod: "brighten" })} />
+            <span><b>Brighten background</b> (recommended) – turns the plain card behind the item pure white. The item itself is never changed. Photos without a plain light background are left as they are.</span></label>
+          <label className="row"><input type="radio" checked={s.prefs.whiteMethod === "cutout"} onChange={() => setPrefs({ whiteMethod: "cutout" })} />
+            <span><b>AI cut-out</b> – works on any background, but can blur or clip the item's edges. Downloads a 44 MB model the first time.</span></label>
           <select value={s.prefs.whiteBg} onChange={(e) => setPrefs({ whiteBg: e.target.value as Prefs["whiteBg"] })}>
             <option value="all">All photos</option>
             <option value="main">Main photo only</option>

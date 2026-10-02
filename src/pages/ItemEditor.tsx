@@ -12,6 +12,7 @@ import { CONDITIONS, DESCRIPTION_MAX, SHIPPING_SIZES, TITLE_MAX } from "../../su
 import { ideasOf, type PriceIdea } from "../../supabase/functions/_shared/ideas";
 import { fixTitleCase } from "../../supabase/functions/_shared/titlecase";
 import { tmSummary } from "../lib/trademe";
+import { priceSearchLinks } from "../lib/searchLinks";
 import type { TmOptions } from "../lib/types";
 
 /** Edit one listing. In review mode, "Approve & next" walks through every draft in the batch. */
@@ -23,7 +24,8 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
   const [saved, setSaved] = useState(true);
   const [left, setLeft] = useState<number | null>(null);
   const [tm, setTm] = useState<TmOptions | null>(null);
-  useEffect(() => { getSettings().then((x) => setTm(x.prefs.tm)).catch(() => {}); }, []);
+  const [whiteMethod, setWhiteMethod] = useState<"brighten" | "cutout">("brighten");
+  useEffect(() => { getSettings().then((x) => { setTm(x.prefs.tm); setWhiteMethod(x.prefs.whiteMethod); }).catch(() => {}); }, []);
 
   const load = async () => {
     const it = await getItem(itemId);
@@ -31,7 +33,7 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
     setDraft(it);
     setSaved(true);
     if (review) {
-      const all = await listItems(it.batch_id);
+      const all = await listItems();
       setLeft(all.filter((i) => i.status === "draft").length);
     }
   };
@@ -72,7 +74,7 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
   }
 
   async function nextDraft(): Promise<string | null> {
-    const all = await listItems(draft!.batch_id);
+    const all = await listItems(); // review walks through every draft, whichever day it was photographed
     const idx = all.findIndex((i) => i.id === draft!.id);
     const after = [...all.slice(idx + 1), ...all.slice(0, idx)];
     return after.find((i) => i.status === "draft")?.id ?? null;
@@ -86,13 +88,13 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
     await save({ status: "ready" });
     if (review) {
       const next = await nextDraft();
-      go(next ? `#/i/${next}/review` : `#/b/${draft!.batch_id}`);
+      go(next ? `#/i/${next}/review` : "#/");
     }
   }
 
   async function skip() {
     const next = await nextDraft();
-    go(next ? `#/i/${next}/review` : `#/b/${draft!.batch_id}`);
+    go(next ? `#/i/${next}/review` : "#/");
   }
 
   async function setStatus(status: ItemStatus) {
@@ -147,7 +149,7 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
   async function removeItem() {
     if (!confirm("Delete this item and its photos?")) return;
     await deleteItem(item!);
-    go(`#/b/${item!.batch_id}`);
+    go("#/");
   }
 
   async function photoAction(p: Photo, action: "rotate" | "crop" | "delete" | "first" | "white" | "makeWhite") {
@@ -155,9 +157,10 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
     if (action === "crop") await updatePhoto(p.id, { crop: null });
     if (action === "white") await updatePhoto(p.id, { use_white: !p.use_white });
     if (action === "makeWhite") {
-      setBusy("Removing background…");
+      setBusy("Whitening background…");
       try {
-        if (!await makeWhite(p)) setError("Couldn't find a clear item in that photo - keeping the original.");
+        const r = await makeWhite(p, whiteMethod);
+        if (r !== true) setError(r);
       } finally {
         setBusy("");
       }
@@ -185,7 +188,7 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
   const money = (n: number | null) => (n === null ? "?" : `$${Number(n).toFixed(n % 1 ? 2 : 0)}`);
   return (
     <>
-      <Header back={`#/b/${draft.batch_id}`} title={review ? `Review${left !== null ? ` · ${left} left` : ""}` : "Edit item"} right={
+      <Header back="#/" title={review ? `Review${left !== null ? ` · ${left} left` : ""}` : "Edit item"} right={
         <button className="link" disabled={saved || !!busy} onClick={() => save()}>{saved ? "Saved" : "Save"}</button>
       } />
       <main className="page editor">
@@ -267,6 +270,16 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
             </div>
             <div className="card small stack price-box">
               <b>Price ideas</b>
+              {priceSearchLinks(draft).length > 0 && (
+                <div className="stack">
+                  <span className="muted">Look it up (opens in a new tab), then type your price:</span>
+                  <div className="row wrap search-links">
+                    {priceSearchLinks(draft).map((l) => (
+                      <a key={l.label} className="button small" href={l.url} target="_blank" rel="noopener noreferrer nofollow" title={l.hint}>{l.label} ↗</a>
+                    ))}
+                  </div>
+                </div>
+              )}
               {ideas.map((idea) => (
                 <div key={idea.kind} className="stack">
                   <span>
@@ -324,7 +337,6 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
                 {draft.status !== "ready" && <button className="button primary grow" disabled={!!busy} onClick={() => approve().catch(() => {})} title="Ctrl/Cmd + Enter">✓ Approve</button>}
                 {draft.status === "ready" && <button className="button grow" onClick={() => setStatus("draft")}>Back to draft</button>}
                 {draft.status !== "listed" && <button className="button" onClick={() => setStatus("listed")}>Listed</button>}
-                {draft.status !== "sold" && <button className="button" onClick={() => setStatus("sold")}>Sold</button>}
               </>
             )}
           </div>

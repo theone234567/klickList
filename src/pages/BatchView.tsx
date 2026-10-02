@@ -2,17 +2,27 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Header from "../components/Header";
 import Thumb from "../components/Thumb";
 import {
-  analyzeItem, getItem, getSettings, listItems, makeWhite, pollEconomy, priceCheck, queueForEconomy, submitEconomy, updateItem,
+  analyzeItem, deleteBatch, getItem, getSettings, listBatches, listItems, makeWhite, pollEconomy, priceCheck, queueForEconomy, submitEconomy, updateItem,
 } from "../lib/api";
 import { itemsToCsv } from "../lib/csv";
 import { DEFAULT_PREFS, type Item, type Photo, type Prefs } from "../lib/types";
 import { aiStart, ideasOf } from "../../supabase/functions/_shared/ideas";
+import { supabase } from "../lib/supabase";
 
 const AI_CONCURRENCY = 3;
 const PRICE_CONCURRENCY = 2;
 const STALE_MS = 3 * 60_000;
 
-type Filter = "all" | "check" | "ready" | "listed";
+type Filter = "all" | "review" | "ready" | "listed";
+
+const dateName = (d: Date) => d.toLocaleDateString("en-NZ", { day: "numeric", month: "short", year: "numeric" });
+/** "Today" / "Yesterday" for the automatic day groups; other (older, named) groups keep their name. */
+function groupLabel(name: string): string {
+  const now = new Date();
+  if (name === dateName(now)) return "Today";
+  if (name === dateName(new Date(now.getTime() - 86_400_000))) return "Yesterday";
+  return name;
+}
 
 function needsAi(i: Item): boolean {
   if (!i.photos.length) return false;
@@ -29,7 +39,11 @@ function needsPrice(i: Item, prefs: Prefs): boolean {
     && (aiStart(i.price_check) ?? i.start_price ?? 0) >= prefs.priceCheckMin;
 }
 
-export default function BatchView({ batchId, userId }: { batchId: string; userId: string }) {
+/**
+ * Home screen: all your items (or one photo group, for old "#/b/<id>" links), grouped by the day they were photographed.
+ * While open it also runs the background work: AI writing, price checks and white backgrounds.
+ */
+export default function BatchView({ batchId, userId }: { batchId?: string; userId: string }) {
   const [items, setItems] = useState<Item[] | null>(null);
   const [prefs, setPrefs] = useState<Prefs>(DEFAULT_PREFS);
   const [error, setError] = useState("");
@@ -37,6 +51,7 @@ export default function BatchView({ batchId, userId }: { batchId: string; userId
   const [running, setRunning] = useState<Set<string>>(new Set());
   const [whiteBusy, setWhiteBusy] = useState(false);
   const [filter, setFilter] = useState<Filter>("all");
+  const [groups, setGroups] = useState<Map<string, string>>(new Map()); // photo group id -> name
   const itemsRef = useRef<Item[]>([]);
   const inFlight = useRef(new Set<string>());
   const priceFlight = useRef(new Set<string>());
@@ -54,10 +69,26 @@ export default function BatchView({ batchId, userId }: { batchId: string; userId
     } catch { /* ignore */ }
   };
 
+  const loadAll = async () => {
+    const [list, batches] = await Promise.all([listItems(batchId), listBatches()]);
+    setGroups(new Map(batches.map((b) => [b.id, b.name])));
+    setAll(list);
+  };
   useEffect(() => {
-    listItems(batchId).then(setAll).catch((e) => setError(e.message));
+    loadAll().catch((e) => setError(e.message));
     getSettings().then((s) => setPrefs(s.prefs)).catch(() => {});
   }, [batchId]);
+
+  async function removeGroup(id: string, label: string) {
+    const count = itemsRef.current.filter((x) => x.batch_id === id).length;
+    if (!confirm(`Delete "${label}" – ${count} item${count === 1 ? "" : "s"} and their photos? This can't be undone.`)) return;
+    try {
+      await deleteBatch(id);
+      await loadAll();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
 
   const pump = useCallback(() => {
     if (paused) return;
@@ -94,7 +125,7 @@ export default function BatchView({ batchId, userId }: { batchId: string; userId
           }
         })
         .catch((e: Error) => setError(e.message))
-        .finally(async () => { try { setAll(await listItems(batchId)); } catch { /* ignore */ } });
+        .finally(async () => { try { await loadAll(); } catch { /* ignore */ } });
     }
 
     // 2. Online price checks (cheap, only for items worth it)
@@ -117,7 +148,7 @@ export default function BatchView({ batchId, userId }: { batchId: string; userId
         if (!photo) continue;
         whiteFlight.current = true;
         setWhiteBusy(true);
-        makeWhite(photo)
+        makeWhite(photo, prefs.whiteMethod)
           .catch(() => failed.current.add(photo.id))
           .finally(async () => { whiteFlight.current = false; setWhiteBusy(false); await refresh(item.id); });
         break;
@@ -132,7 +163,7 @@ export default function BatchView({ batchId, userId }: { batchId: string; userId
   useEffect(() => {
     if (!waitingOnBatch) return;
     const poll = () => pollEconomy()
-      .then(async (r) => { if (r.saved > 0) setAll(await listItems(batchId)); })
+      .then(async (r) => { if (r.saved > 0) await loadAll(); })
       .catch(() => {});
     poll();
     const t = setInterval(poll, 45_000);
@@ -165,15 +196,26 @@ export default function BatchView({ batchId, userId }: { batchId: string; userId
   const approved = list.filter((i) => i.status === "ready").length;
   const shown = list.filter((i) =>
     filter === "all" ? true
-      : filter === "check" ? i.status === "draft" && (i.needs_check.length > 0 || i.ai_status === "failed")
+      : filter === "review" ? i.status === "draft"
       : filter === "ready" ? i.status === "ready"
       : i.status === "listed" || i.status === "sold");
+  // Day groups, newest first (items arrive newest first); items in the order they were photographed.
+  const grouped: { id: string; items: Item[] }[] = [];
+  for (const i of shown) {
+    const g = grouped.find((x) => x.id === i.batch_id);
+    if (g) g.items.push(i); else grouped.push({ id: i.batch_id, items: [i] });
+  }
+  for (const g of grouped) g.items.sort((a, b) => a.position - b.position);
+  const base = batchId ? `#/b/${batchId}` : "#";
   const busyAnything = waiting > 0 || whiteLeft > 0 || priceLeft > 0;
 
   return (
     <>
-      <Header back="#/" title="Items" right={<a className="link" href={`#/b/${batchId}/capture`}>+ Add items</a>} />
+      <Header back={batchId ? "#/" : undefined} title={batchId ? groupLabel(groups.get(batchId) ?? "Items") : "Your items"} right={
+        batchId ? null : <><a className="link" href="#/settings">Settings</a><button className="link" onClick={() => supabase.auth.signOut()}>Sign out</button></>
+      } />
       <main className="page">
+        <a className="button primary wide" href={`${base}/capture`}>📷 New listing</a>
         <div className="card stack">
           <div className="row wrap">
             <span className="grow">
@@ -202,29 +244,35 @@ export default function BatchView({ batchId, userId }: { batchId: string; userId
             <button className="button primary grow" disabled={!drafts.length} onClick={() => { location.hash = `#/i/${drafts[0].id}/review`; }}>
               ✓ Review &amp; approve ({drafts.length})
             </button>
-            <a className={`button grow ${approved ? "primary" : ""}`} href={`#/b/${batchId}/export`}>⬆ Upload to Trade Me ({approved})</a>
+            <a className={`button grow ${approved ? "primary" : ""}`} href={`${base}/export`}>⬆ Upload to Trade Me ({approved})</a>
           </div>
           <div className="row wrap small">
-            <a className="link" href={`#/b/${batchId}/list`}>Copy-paste mode</a>
-            <button className="link" onClick={exportCsv} disabled={!list.length}>Spreadsheet (CSV)</button>
-            <a className="link" href="#/settings">Settings</a>
+            <a className="link" href={`${base}/list`}>Copy-paste mode</a>
+            <button className="link" onClick={exportCsv} disabled={!list.length}>Summary list (not for Trade Me)</button>
           </div>
         </div>
         {error && <p className="error">{error}</p>}
 
         <div className="tabs">
-          {(["all", "check", "ready", "listed"] as Filter[]).map((f) => (
+          {(["all", "review", "ready", "listed"] as Filter[]).map((f) => (
             <button key={f} className={filter === f ? "on" : ""} onClick={() => setFilter(f)}>
-              {{ all: "All", check: "Check", ready: "Approved", listed: "Listed" }[f]}
+              {{ all: "All", review: "To review", ready: "Ready to upload", listed: "Listed" }[f]}
             </button>
           ))}
         </div>
 
         {items === null ? <p className="muted">Loading…</p> : shown.length === 0 ? (
-          <p className="muted center">Nothing here yet.</p>
-        ) : (
+          <p className="muted center">{list.length ? "Nothing here." : "No items yet – tap 📷 New listing to start."}</p>
+        ) : grouped.map((g) => (
+          <section key={g.id} className="stack">
+            {!batchId && (
+              <div className="row group-head">
+                <b className="grow">{groupLabel(groups.get(g.id) ?? "Earlier")} <span className="muted small">· {g.items.length}</span></b>
+                <button className="link danger small" onClick={() => removeGroup(g.id, groupLabel(groups.get(g.id) ?? "Earlier"))}>Delete day</button>
+              </div>
+            )}
           <ul className="grid">
-            {shown.map((i) => (
+            {g.items.map((i) => (
               <li key={i.id} className="card tile">
                 <a href={`#/i/${i.id}`}>
                   <Thumb photo={i.photos[0]} />
@@ -248,7 +296,8 @@ export default function BatchView({ batchId, userId }: { batchId: string; userId
               </li>
             ))}
           </ul>
-        )}
+          </section>
+        ))}
       </main>
     </>
   );

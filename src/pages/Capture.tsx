@@ -1,16 +1,23 @@
 import { useEffect, useRef, useState } from "react";
 import Header from "../components/Header";
-import { addPhoto, createItem, listItems } from "../lib/api";
+import { addPhoto, createItem, listItems, todayBatch } from "../lib/api";
 import { previewUrl, processPhoto, type Processed } from "../lib/image";
 import type { Item } from "../lib/types";
 
 /**
- * Fast capture: shoot 1-3 photos of an item, tap "Next item", repeat.
+ * Fast capture: shoot 1-3 photos of an item, tap "New listing", repeat.
+ * Uses the live camera inside the page; if that isn't possible, the phone's own camera (one photo at a time).
  * Photos are tidied and uploaded in the background so you never wait.
  */
-export default function Capture({ batchId, userId }: { batchId: string; userId: string }) {
+/** Without a batchId, photos go into today's group (created automatically). */
+export default function Capture({ batchId, userId }: { batchId?: string; userId: string }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [cameraOk, setCameraOk] = useState<boolean | null>(null);
+  const [cameraError, setCameraError] = useState("");
+  // Zoom with buttons instead of pinching the page (which pushes the shutter off-screen).
+  // Uses the camera's own zoom where the phone supports it, otherwise crops the middle of the picture.
+  const [zoom, setZoom] = useState(1);
+  const hwZoom = useRef<{ min: number; max: number } | null>(null);
   const [pending, setPending] = useState(0);
   const [itemCount, setItemCount] = useState(0);
   const [shots, setShots] = useState<string[]>([]); // local previews for the current item
@@ -23,32 +30,58 @@ export default function Capture({ batchId, userId }: { batchId: string; userId: 
   const current = useRef<{ item: Item; photos: number } | null>(null);
   const nextPos = useRef(0);
 
+  const home = batchId ? `#/b/${batchId}` : "#/";
+  const group = useRef<Promise<string> | null>(null);
   useEffect(() => {
-    listItems(batchId).then((items) => {
-      nextPos.current = items.reduce((m, i) => Math.max(m, i.position + 1), 0);
-      setItemCount(items.length);
-    }).catch((e) => setError(e.message));
+    group.current = batchId ? Promise.resolve(batchId) : todayBatch().then((b) => b.id);
+    group.current
+      .then((id) => listItems(id))
+      .then((items) => {
+        nextPos.current = items.reduce((m, i) => Math.max(m, i.position + 1), 0);
+        setItemCount(items.length);
+      })
+      .catch((e) => setError(e.message));
   }, [batchId]);
 
   // camera
-  useEffect(() => {
-    let stream: MediaStream | undefined;
-    (async () => {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1440 } },
-          audio: false,
-        });
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play();
-        }
-        setCameraOk(true);
-      } catch {
-        setCameraOk(false);
+  const stream = useRef<MediaStream | null>(null);
+  async function startCamera() {
+    setCameraError("");
+    setCameraOk(null);
+    stream.current?.getTracks().forEach((t) => t.stop());
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraOk(false);
+      setCameraError("This browser can't use the camera. If you opened KlickList from an email link, it's probably inside the email app – open the site in Safari or Chrome, or use the home-screen app.");
+      return;
+    }
+    try {
+      stream.current = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1440 } },
+        audio: false,
+      });
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream.current;
+        await videoRef.current.play();
       }
-    })();
-    return () => stream?.getTracks().forEach((t) => t.stop());
+      const track = stream.current.getVideoTracks()[0];
+      const caps = (track?.getCapabilities?.() ?? {}) as { zoom?: { min: number; max: number } };
+      hwZoom.current = caps.zoom && caps.zoom.max > caps.zoom.min ? caps.zoom : null;
+      setZoom(1);
+      setCameraOk(true);
+    } catch (e) {
+      const name = (e as Error).name;
+      setCameraOk(false);
+      setCameraError(
+        name === "NotAllowedError" ? "Camera access is blocked for this site. iPhone: Settings → Safari → Camera → Allow (or tap aA in the address bar → Website Settings → Camera). Android Chrome: tap the icon left of the address → Permissions → Camera → Allow. Then tap Try again."
+          : name === "NotFoundError" ? "No camera found on this device."
+          : name === "NotReadableError" ? "The camera is busy in another app. Close that app, then tap Try again."
+          : "The camera didn't start. Tap Try again.",
+      );
+    }
+  }
+  useEffect(() => {
+    startCamera();
+    return () => stream.current?.getTracks().forEach((t) => t.stop());
   }, []);
 
   useEffect(() => {
@@ -69,7 +102,7 @@ export default function Capture({ batchId, userId }: { batchId: string; userId: 
   /** `processing` has already started (in the background), so saving only waits for the upload. */
   async function addToCurrent(processing: Promise<Processed>) {
     if (!current.current) {
-      const item = await createItem(batchId, nextPos.current++);
+      const item = await createItem(await group.current!, nextPos.current++);
       current.current = { item, photos: 0 };
       setItemCount((n) => n + 1);
     }
@@ -77,13 +110,28 @@ export default function Capture({ batchId, userId }: { batchId: string; userId: 
     await addPhoto(userId, cur.item, await processing, cur.photos++);
   }
 
+  async function changeZoom(z: number) {
+    setZoom(z);
+    const track = stream.current?.getVideoTracks()[0];
+    const hw = hwZoom.current;
+    if (track && hw) {
+      const value = Math.min(hw.max, Math.max(hw.min, hw.min * z));
+      await track.applyConstraints({ advanced: [{ zoom: value } as MediaTrackConstraintSet] }).catch(() => { hwZoom.current = null; });
+    }
+  }
+  const digitalZoom = hwZoom.current ? 1 : zoom;
+
   async function shoot() {
     const v = videoRef.current;
     if (!v || !v.videoWidth) return;
     setFlash(true);
     setTimeout(() => setFlash(false), 120);
     // Grab the frame straight from the camera (no JPEG round-trip), then tidy it in a background worker.
-    const frame = await createImageBitmap(v);
+    // With digital zoom, keep just the middle of the picture - exactly what the viewfinder shows.
+    const sw = v.videoWidth / digitalZoom, sh = v.videoHeight / digitalZoom;
+    const frame = digitalZoom > 1
+      ? await createImageBitmap(v, (v.videoWidth - sw) / 2, (v.videoHeight - sh) / 2, sw, sh)
+      : await createImageBitmap(v);
     const url = await previewUrl(frame);
     setShots((s) => [...s, url]);
     const processing = processPhoto(frame);
@@ -97,7 +145,7 @@ export default function Capture({ batchId, userId }: { batchId: string; userId: 
     chain.current = chain.current.then(() => { current.current = null; });
   }
 
-  // Desktop shortcuts: Space = take photo, N or Enter = next item
+  // Desktop shortcuts: Space = take photo, N or Enter = new listing
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (groupFiles || (e.target as HTMLElement)?.tagName === "INPUT") return;
@@ -108,9 +156,19 @@ export default function Capture({ batchId, userId }: { batchId: string; userId: 
     return () => window.removeEventListener("keydown", onKey);
   });
 
+  /** Photos from the phone's own camera (backup mode): added to the current listing, no questions. */
+  function addFiles(files: FileList | null | undefined) {
+    const list = [...(files ?? [])].filter((f) => f.type.startsWith("image/") || /\.(jpe?g|png|heic|webp)$/i.test(f.name));
+    for (const f of list) {
+      setShots((s) => [...s, URL.createObjectURL(f)]);
+      enqueue(() => addToCurrent(processPhoto(f)));
+    }
+  }
+
   function onFiles(files: FileList | null | undefined) {
     if (!files?.length) return;
     const list = [...files].filter((f) => f.type.startsWith("image/")).sort((a, b) => a.lastModified - b.lastModified);
+    if (list.length === 1) return addFiles(files);
     setGroupFiles(list);
   }
 
@@ -128,7 +186,7 @@ export default function Capture({ batchId, userId }: { batchId: string; userId: 
 
   return (
     <>
-      <Header back={`#/b/${batchId}`} title={`${itemCount} item${itemCount === 1 ? "" : "s"}`} right={pending > 0 ? <span className="badge">⬆ {pending}</span> : <span className="badge ok">✓ saved</span>} />
+      <Header back={home} title={`${batchId ? "" : "Today: "}${itemCount} item${itemCount === 1 ? "" : "s"}`} right={pending > 0 ? <span className="badge">⬆ {pending}</span> : <span className="badge ok">✓ saved</span>} />
       <main
         className={`capture ${dragging ? "dragging" : ""}`}
         onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
@@ -137,36 +195,49 @@ export default function Capture({ batchId, userId }: { batchId: string; userId: 
       >
         {cameraOk !== false ? (
           <div className={`viewfinder ${flash ? "flash" : ""}`}>
-            <video ref={videoRef} playsInline muted />
+            <video ref={videoRef} playsInline muted style={digitalZoom > 1 ? { transform: `scale(${digitalZoom})` } : undefined} />
+            {cameraOk && (
+              <div className="zoom">
+                {[1, 2, 3].map((z) => (
+                  <button key={z} className={zoom === z ? "on" : ""} onClick={() => changeZoom(z)}>{z}×</button>
+                ))}
+              </div>
+            )}
           </div>
         ) : (
-          <div className="card center">
-            <p>No camera here. Drag &amp; drop photos onto this page, or:</p>
-            <label className="button primary">
-              Take / choose photos
-              <input hidden type="file" accept="image/*" capture="environment" multiple onChange={(e) => onFiles(e.target.files)} />
-            </label>
+          <div className="card stack center">
+            <p className="small">{cameraError || "No camera here."}</p>
+            <button className="button" onClick={startCamera}>Try again</button>
+            <p className="muted small">Or use your phone's camera below – each photo goes into this listing until you tap New listing. On a computer you can drag &amp; drop photos here.</p>
           </div>
         )}
 
         <div className="strip">
           {shots.map((u, i) => <img key={u} src={u} alt={`photo ${i + 1}`} />)}
-          {shots.length > 0
-            ? <button className="next-link" onClick={nextItem} title="Shortcut: N">Next item ›</button>
-            : <span className="muted small">Item {itemCount + 1}: photo 1 = front, photo 2 = back/label.</span>}
+          {shots.length === 0 && <span className="muted small">Listing {itemCount + 1}: photo 1 = front, photo 2 = back/label.</span>}
         </div>
 
         <div className="controls">
-          <label className="button">
-            Gallery
-            <input hidden type="file" accept="image/*" multiple onChange={(e) => { onFiles(e.target.files); e.target.value = ""; }} />
-          </label>
-          <button className="shutter" onClick={shoot} disabled={!cameraOk} aria-label="Take photo" />
-          <span aria-hidden="true" />
+          <div className="stack controls-left">
+            {pending > 0
+              ? <button className="button" disabled>Saving {pending}…</button>
+              : <a className="button" href={home}>✓ Done</a>}
+            <label className="link small">
+              Gallery
+              <input hidden type="file" accept="image/*" multiple onChange={(e) => { onFiles(e.target.files); e.target.value = ""; }} />
+            </label>
+          </div>
+          {cameraOk !== false
+            ? <button className="shutter" onClick={shoot} disabled={!cameraOk} aria-label="Take photo" />
+            : (
+              <label className="shutter" aria-label="Take photo">
+                <input hidden type="file" accept="image/*" capture="environment" onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
+              </label>
+            )}
+          <button className="button primary new-listing" onClick={nextItem} disabled={shots.length === 0} title="Shortcut: N">
+            New listing ›
+          </button>
         </div>
-        {pending > 0
-          ? <button className="button wide" disabled>Saving {pending} photo{pending > 1 ? "s" : ""}…</button>
-          : <a className="button wide" href={`#/b/${batchId}`}>Done – write my listings</a>}
         {error && <p className="error">{error}</p>}
       </main>
 
@@ -175,6 +246,8 @@ export default function Capture({ batchId, userId }: { batchId: string; userId: 
           <div className="card stack">
             <b>{groupFiles.length} photos – how are they grouped?</b>
             <p className="muted small">Sorted by the time taken. You can merge items later.</p>
+            <button className="button primary" onClick={() => { const f = groupFiles; setGroupFiles(null); f.forEach((x) => enqueue(() => addToCurrent(processPhoto(x)))); setShots((s) => [...s, ...f.map((x) => URL.createObjectURL(x))]); }}>
+              Add all to this listing</button>
             <button className="button" onClick={() => importGrouped(1)}>1 photo per item</button>
             <button className="button" onClick={() => importGrouped(2)}>2 photos per item (front + back)</button>
             <button className="button" onClick={() => importGrouped(3)}>3 photos per item</button>

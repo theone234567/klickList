@@ -3,7 +3,6 @@ import type { Session } from "@supabase/supabase-js";
 import { configured, supabase } from "./lib/supabase";
 import { useRoute } from "./lib/router";
 import Login from "./pages/Login";
-import Batches from "./pages/Batches";
 import BatchView from "./pages/BatchView";
 import Capture from "./pages/Capture";
 import ItemEditor from "./pages/ItemEditor";
@@ -39,11 +38,11 @@ export default function App() {
   const userId = session.user.id;
   switch (route.name) {
     case "batch": return <BatchView key={route.id} batchId={route.id} userId={userId} />;
-    case "capture": return <Capture key={route.id} batchId={route.id} userId={userId} />;
-    case "quicklist": return <QuickList key={route.id} batchId={route.id} />;
+    case "capture": return <Capture key={route.id ?? "today"} batchId={route.id} userId={userId} />;
+    case "quicklist": return <QuickList key={route.id ?? "all"} batchId={route.id} />;
     case "item": return <ItemEditor key={route.id} itemId={route.id} review={route.review} />;
-    case "export": return <ExportPage key={route.id} batchId={route.id} userId={userId} />;
+    case "export": return <ExportPage key={route.id ?? "all"} batchId={route.id} userId={userId} />;
     case "settings": return <SettingsPage />;
-    default: return <Batches />;
+    default: return <BatchView key="all" userId={userId} />;
   }
 }

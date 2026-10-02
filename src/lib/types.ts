@@ -65,6 +65,7 @@ export interface Prefs {
   aiBackup: boolean; // use the other AI if the chosen one fails / runs out
   economy: boolean; // Claude Batch API: 50% off, results within minutes-hours
   whiteBg: "all" | "main" | "off";
+  whiteMethod: "brighten" | "cutout"; // brighten = only the plain background changes; cutout = AI cut-out
   autoPriceCheck: boolean;
   priceCheckMin: number;
   tm: TmOptions; // Trade Me listing options written into every upload file
@@ -94,6 +95,6 @@ export interface Settings {
 }
 
 export const DEFAULT_PREFS: Prefs = {
-  aiProvider: "claude", aiBackup: true, economy: true, whiteBg: "all", autoPriceCheck: true, priceCheckMin: 5,
+  aiProvider: "claude", aiBackup: true, economy: true, whiteBg: "all", whiteMethod: "brighten", autoPriceCheck: true, priceCheckMin: 5,
   tm: DEFAULT_TM_OPTIONS,
 };
