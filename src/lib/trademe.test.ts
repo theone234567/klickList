@@ -92,7 +92,7 @@ describe("Trade Me import guide columns", () => {
     expect(row.body).toContain("Region: 4");
     expect(row.barcode_gtin).toBe("9312345678907");
     expect(row.brand).toBe("Sony");
-    expect(row.weight_kg).toBe("0.2");
+    expect(row.weight_kg).toBe("");
     expect(row.stock_amount).toBe("1");
     expect(row.unlimited_stock).toBe("False");
     expect(row.is_new).toBe("False");
@@ -135,6 +135,13 @@ describe("defaults and automatic categories", () => {
 });
 
 describe("listing options from Settings", () => {
+  it("leaves all courier measurements empty while keeping free shipping", () => {
+    const template = templateFromCsv("title,weight_kg,length_cm,width_cm,height_cm,delivery_price\nOld,1,20,15,5,6.00=Courier\n");
+    const csv = parseCsv(buildTradeMeCsv([item({ weight_kg: 0.2 })], template, new Map(), {}, [], DEFAULT_TM_OPTIONS));
+    const row = Object.fromEntries(csv[0].map((h, i) => [h, csv[1][i]]));
+    expect([row.weight_kg, row.length_cm, row.width_cm, row.height_cm]).toEqual(["", "", "", ""]);
+    expect(row.delivery_price).toBe("0.00=Free shipping");
+  });
   it("overrides paid shipping and courier rates in an imported template even without settings", () => {
     const template = templateFromCsv("title,delivery_price,delivery_use_bookcourier_rates\nOld,5.00=Courier,True\n");
     const csv = parseCsv(buildTradeMeCsv([item()], template, new Map(), {}));

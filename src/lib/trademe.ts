@@ -201,6 +201,10 @@ export function buildTradeMeCsv(
     const category = categoryFor(item, categoryMap, cats);
     const row = headers.map((h, i) => {
       const d = defaults[i] ?? "";
+      // Free shipping does not use courier measurements. Export them as a complete
+      // empty group rather than mixing an estimated weight with missing dimensions
+      // or measurements copied from an unrelated template product.
+      if (["heightcm", "widthcm", "lengthcm", "weightkg"].includes(norm(h)) || fieldFor(h) === "weight") return "";
       if (h.trim().toLowerCase() === "delivery_price") return FREE_SHIPPING;
       if (h.trim().toLowerCase() === "delivery_use_bookcourier_rates") return boolLike(d, false);
       if (norm(h) === "islegalnoticeread") return boolLike(d, legalNoticeRead);
@@ -221,7 +225,6 @@ export function buildTradeMeCsv(
         case "quantity": return d || "1";
         case "barcode": return item.barcode.replace(/[^\w-]/g, "").slice(0, 100);
         case "brand": return (item.attributes.find((a) => /^brand$/i.test(a.name))?.value ?? "").slice(0, 70);
-        case "weight": return item.weight_kg ? String(item.weight_kg) : d;
         case "perItem": return "";
         default: return tm ? optionCell(h, d, tm) ?? d : d;
       }
