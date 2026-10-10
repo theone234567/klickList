@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { zip } from "fflate";
 import Header from "../components/Header";
 import Thumb from "../components/Thumb";
 import {
-  analyzeItem, deleteBatch, deleteItem, getItem, getSettings, listBatches, listItems, makeWhite, pollEconomy, priceCheck, queueForEconomy, submitEconomy, updateItem,
+  analyzeItem, deleteBatch, deleteItem, getItem, getSettings, listBatches, listItems, makeWhite, pollEconomy, priceCheck, queueForEconomy, renderPhoto, submitEconomy, updateItem,
 } from "../lib/api";
 import { itemsToCsv } from "../lib/csv";
 import { DEFAULT_PREFS, type Item, type Photo, type Prefs } from "../lib/types";
 import { aiStart, ideasOf } from "../../supabase/functions/_shared/ideas";
 import { supabase } from "../lib/supabase";
 import { nextReady, startReviewRun } from "../lib/review";
+import { photoDownloadEntries } from "../lib/photoDownloads";
 
 const AI_CONCURRENCY = 3;
 const PRICE_CONCURRENCY = 2;
@@ -52,6 +54,9 @@ export default function BatchView({ batchId, userId }: { batchId?: string; userI
   const [running, setRunning] = useState<Set<string>>(new Set());
   const [whiteBusy, setWhiteBusy] = useState(false);
   const [filter, setFilter] = useState<Filter>("all");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [photoProgress, setPhotoProgress] = useState("");
+  const downloadingPhotos = useRef(false);
   const [groups, setGroups] = useState<Map<string, string>>(new Map()); // photo group id -> name
   // Arrived here after reviewing the last listing ("#/?done"): show the finished message once.
   const [finished, setFinished] = useState(() => location.hash.includes("done"));
@@ -213,6 +218,38 @@ export default function BatchView({ batchId, userId }: { batchId?: string; userI
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   }
 
+  async function downloadPhotos(targets: Item[]) {
+    if (downloadingPhotos.current) return;
+    downloadingPhotos.current = true;
+    setError("");
+    try {
+      const entries = photoDownloadEntries(targets);
+      if (!entries.length) throw new Error("These items have no photos to download.");
+      const files: Record<string, Uint8Array> = {};
+      for (const [n, entry] of entries.entries()) {
+        setPhotoProgress(`Preparing photo ${n + 1}/${entries.length}…`);
+        try {
+          files[entry.name] = new Uint8Array(await (await renderPhoto(entry.photo)).arrayBuffer());
+        } catch {
+          throw new Error(`Couldn't download ${entry.name}. Please try again. No ZIP was created.`);
+        }
+      }
+      setPhotoProgress("Creating photo ZIP…");
+      const data = await new Promise<Uint8Array>((resolve, reject) => zip(files, { level: 0 }, (err, result) => err ? reject(err) : resolve(result)));
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([data as BlobPart], { type: "application/zip" }));
+      a.download = targets.length === 1 ? `${entries[0].name.replace(/ 1\.jpg$/, "")} photos.zip` : "KlickList selected photos.zip";
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 30_000);
+      setNotice(`Downloaded ${entries.length} photos. Unzip the file, then upload the JPGs to Trade Me.`);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      downloadingPhotos.current = false;
+      setPhotoProgress("");
+    }
+  }
+
   const list = items ?? [];
   const done = list.filter((i) => i.ai_status === "done").length;
   const waiting = list.filter((i) => needsAi(i)).length;
@@ -227,6 +264,8 @@ export default function BatchView({ batchId, userId }: { batchId?: string; userI
       : filter === "review" ? i.status === "draft"
       : filter === "ready" ? i.status === "ready"
       : i.status === "listed" || i.status === "sold");
+  const selectedItems = list.filter((i) => selected.has(i.id) && i.id !== trashed?.id && i.photos.length);
+  const downloadableShown = shown.filter((i) => i.photos.length);
   // Day groups, newest first (items arrive newest first); items in the order they were photographed.
   const grouped: { id: string; items: Item[] }[] = [];
   for (const i of shown) {
@@ -303,6 +342,18 @@ export default function BatchView({ batchId, userId }: { batchId?: string; userI
           ))}
         </div>
 
+        {downloadableShown.length > 0 && <div className="card stack">
+          <b>Download photos for manual upload</b>
+          <p className="small muted">Select items below, or download all shown items. Photos use each item's name followed by 1, 2, 3… and include your crop, rotation and selected background.</p>
+          <div className="row wrap">
+            <button className="button" disabled={!!photoProgress} onClick={() => setSelected(new Set(downloadableShown.map((i) => i.id)))}>Select all shown</button>
+            <button className="link" disabled={!!photoProgress || !selected.size} onClick={() => setSelected(new Set())}>Clear selection</button>
+            <button className="button primary" disabled={!!photoProgress || !selectedItems.length} onClick={() => downloadPhotos(selectedItems)}>Download selected photos ({selectedItems.length} items)</button>
+            <button className="button" disabled={!!photoProgress} onClick={() => downloadPhotos(downloadableShown)}>Download all shown photos</button>
+          </div>
+          {photoProgress && <p role="status">{photoProgress}</p>}
+        </div>}
+
         {items === null ? <p className="muted">Loading…</p> : shown.length === 0 ? (
           <p className="muted center">{list.length ? "Nothing here." : "No items yet – tap 📷 New listing to start."}</p>
         ) : grouped.map((g) => (
@@ -316,6 +367,8 @@ export default function BatchView({ batchId, userId }: { batchId?: string; userI
           <ul className="grid">
             {g.items.map((i) => (
               <li key={i.id} className="card tile">
+                <label className="row small"><input type="checkbox" checked={selected.has(i.id)} disabled={!i.photos.length || !!photoProgress}
+                  onChange={(e) => { const checked = e.target.checked; setSelected((old) => { const next = new Set(old); if (checked) next.add(i.id); else next.delete(i.id); return next; }); }} />Select photos</label>
                 <button className="tile-trash" aria-label={`Delete ${i.title || "item"}`} title="Delete"
                   onClick={() => trash(i)} disabled={running.has(i.id)}>🗑</button>
                 <a href={`#/i/${i.id}`}>
@@ -331,6 +384,7 @@ export default function BatchView({ batchId, userId }: { batchId?: string; userI
                     </span>
                   </div>
                 </a>
+                <button className="button" disabled={!i.photos.length || !!photoProgress} onClick={() => downloadPhotos([i])}>Download photos ({i.photos.length})</button>
                 {i.ai_status === "failed" && (
                   <div className="tile-err">
                     <span className="small">{i.ai_error}</span>
