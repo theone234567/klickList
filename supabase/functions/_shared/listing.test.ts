@@ -10,6 +10,10 @@ const base = {
 };
 
 describe("sanitizeListing", () => {
+  it("preserves a factual film synopsis and cast details within the description limit", () => {
+    const description = "Thunderball on Blu-ray.\nStarring: Sean Connery and Claudine Auger.\nJames Bond investigates the theft of nuclear weapons and confronts the organisation behind it.\nEnglish language. Used; case included.";
+    expect(sanitizeListing({ ...base, description }).description).toBe(description);
+  });
   it("accepts a normal answer and lifts type/region/brand into details", () => {
     const r = sanitizeListing(base);
     expect(r.title).toBe("Shrek 2 DVD");
