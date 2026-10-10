@@ -18,7 +18,11 @@ export function itemsToCsv(items: Item[]): string {
 }
 
 /** Full text for pasting into Trade Me's description box. */
-export function fullDescription(item: Item): string {
+export function fullDescription(item: Item, structuredAttributes = false): string {
+  const words = (text: string) => text.toLowerCase()
+    .replace(/\bfirst\b/g, "1").replace(/\bsecond\b/g, "2")
+    .replace(/&/g, " and ").replace(/[^a-z0-9]+/g, " ").trim();
+  const descriptionWords = ` ${words(item.description)} `;
   const nameKey = (name: string) => {
     const key = name.trim().toLowerCase();
     return key === "type" ? "format" : key;
@@ -39,6 +43,15 @@ export function fullDescription(item: Item): string {
   }
   const details = item.attributes.filter((a) => {
     const name = nameKey(a.name);
+    if (structuredAttributes && ["region", "condition"].includes(name)) return false;
+    // A fact in a sentence ("DVD format", "British comedy", "first and
+    // second series") need not be repeated as a labelled detail line.
+    if (["format", "genre", "language", "series", "brand", "barcode"].includes(name)
+      && words(a.value) && descriptionWords.includes(` ${words(a.value)} `)) return false;
+    if (name === "region") {
+      const code = a.value.match(/^(?:region\s*)?([1-6abc])(?:\s|\(|$)/i)?.[1]?.toLowerCase();
+      if (code && descriptionWords.includes(` region ${code} `)) return false;
+    }
     const key = `${name}:${valueKey(name, a.value)}`;
     if (seen.has(key)) return false;
     seen.add(key);

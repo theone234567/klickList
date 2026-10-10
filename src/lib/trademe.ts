@@ -218,7 +218,7 @@ export function buildTradeMeCsv(
       switch (fieldFor(h)) {
         case "sku": return skuFor(item);
         case "title": return fixTitleCase(item.title);
-        case "description": return fitBody(fullDescription(item));
+        case "description": return fitBody(fullDescription(item, true));
         case "category": return category || d;
         case "duration": {
           const want = tm?.days || Number(d) || 7;

@@ -45,7 +45,7 @@ describe("template", () => {
     const row = Object.fromEntries(t.headers.map((h, i) => [h, out[1][i]]));
     expect(row.SKU).toBe(skuFor(item()));
     expect(row.Title).toBe('Shrek 2 "Special" DVD');
-    expect(row.Description).toBe("- Plays fine\n- Case ok\n\nRegion: 4");
+    expect(row.Description).toBe("- Plays fine\n- Case ok");
     expect(row.Category).toBe("0003-0050-");
     expect(row.Start_Price).toBe("3.00");
     expect(row.Is_New).toBe("No");
@@ -89,7 +89,8 @@ describe("Trade Me import guide columns", () => {
       attributes: [{ name: "Brand", value: "Sony" }, { name: "Region", value: "4" }] })], null, new Map(), { "Movies & TV > DVDs": "4425" }));
     const row = Object.fromEntries(out[0].map((h, i) => [h, out[1][i]]));
     expect(row.category_id).toBe("4425");
-    expect(row.body).toContain("Region: 4");
+    expect(row.attributes).toContain("Region=4");
+    expect(row.body).not.toContain("Region: 4");
     expect(row.barcode_gtin).toBe("9312345678907");
     expect(row.brand).toBe("Sony");
     expect(row.weight_kg).toBe("");

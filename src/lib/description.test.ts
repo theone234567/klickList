@@ -21,5 +21,13 @@ it("does not hide different values or attributes only loosely mentioned in prose
     description: "A DVD set.\nRegion: 2",
     attributes: [{ name: "Region", value: "4" }, { name: "Format", value: "DVD" }],
   } as Item;
-  expect(fullDescription(item)).toContain("Region: 4\nFormat: DVD");
+  expect(fullDescription(item)).toBe("A DVD set.\nRegion: 2\n\nRegion: 4");
+});
+
+it("avoids the sentence-form repetitions shown in the user's DVD description", () => {
+  const item = {
+    description: "- The Complete Oh Doctor Beeching! - First and Second Series.\n- Contains episodes from the British comedy television programme.\n- DVD format.\n- Region 2.\n- Used condition.\n- Case and artwork included.",
+    attributes: [{ name: "Type", value: "DVD" }, { name: "Region", value: "Region 2 (UK/Europe/Japan)" }, { name: "Brand", value: "BBC" }, { name: "Series", value: "1 and 2" }, { name: "Genre", value: "Comedy" }, { name: "Language", value: "English" }, { name: "Condition", value: "Good" }],
+  } as Item;
+  expect(fullDescription(item, true)).toBe(item.description + "\n\nBrand: BBC\nLanguage: English");
 });
