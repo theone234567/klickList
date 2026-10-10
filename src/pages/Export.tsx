@@ -39,7 +39,8 @@ export default function ExportPage({ batchId, userId }: { batchId?: string; user
   if (!items || !settings) return <main className="page"><p className="muted">{error || "Loading…"}</p></main>;
 
   const approved = items.filter((i) => i.status === "ready");
-  const noPrice = approved.filter((i) => !i.start_price);
+  const buyNowOnly = settings.prefs.tm.listingType === "buyNow";
+  const noPrice = approved.filter((i) => buyNowOnly ? !i.buy_now_price || i.buy_now_price < 0.5 : !i.start_price);
   const longTitles = approved.filter((i) => i.title.length > TM_TITLE_MAX);
 
   async function setCategory(item: Item, code: string) {
@@ -119,10 +120,18 @@ export default function ExportPage({ batchId, userId }: { batchId?: string; user
         {noPrice.length > 0 && (
           <div className="card stack">
             <b>No price yet</b>
-            <p className="muted small">Trade Me needs a start price. Add one to these:</p>
+            <p className="muted small">{buyNowOnly ? "Enter and save your fixed Buy Now price (at least $0.50) for these items:" : "Trade Me needs a start price. Add one to these:"}</p>
             {noPrice.map((i) => <a key={i.id} className="small" href={`#/i/${i.id}`}>{i.title || "Untitled"}</a>)}
           </div>
         )}
+
+        {approved.length > 0 && <div className="card stack">
+          <b>{buyNowOnly ? "Fixed Buy Now prices to export" : "Auction prices to export"}</b>
+          {approved.map((i) => <div key={i.id} className="row wrap">
+            <a href={`#/i/${i.id}`}>{i.title || "Untitled"}</a>
+            <b>{(buyNowOnly ? i.buy_now_price : i.start_price) == null ? "Price required" : `$${Number(buyNowOnly ? i.buy_now_price : i.start_price).toFixed(2)}`}</b>
+          </div>)}
+        </div>}
 
         {approved.length > 0 && (
           <div className="card stack">

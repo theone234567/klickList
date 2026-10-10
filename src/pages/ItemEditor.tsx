@@ -104,7 +104,7 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
     if (!tm) return setError("Listing settings are still loading. Try again shortly.");
     if (!draft!.title.trim()) return setError("Add a title first.");
     if (tm?.listingType === "buyNow") {
-      const amount = draft!.buy_now_price ?? draft!.start_price;
+      const amount = draft!.buy_now_price;
       if (!amount || amount < 0.5) return setError("Type a Buy Now price first (at least $0.50).");
       await save({ status: "ready", start_price: amount, buy_now_price: amount });
       rememberApproved(draft!.id, draft!.title);
@@ -316,7 +316,7 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
                   onChange={(e) => set("start_price", e.target.value === "" ? null : Number(e.target.value))} />
               </label>}
               <label className="grow">Buy Now $
-                <input type="number" inputMode="decimal" min={0} step="0.5" value={(tm?.listingType === "buyNow" ? draft.buy_now_price ?? draft.start_price : draft.buy_now_price) ?? ""}
+                <input type="number" inputMode="decimal" min={0} step="0.5" value={draft.buy_now_price ?? ""}
                   onChange={(e) => {
                     const value = e.target.value === "" ? null : Number(e.target.value);
                     setDraft({ ...draft, buy_now_price: value, ...(tm?.listingType === "buyNow" ? { start_price: value } : {}) }); setSaved(false);

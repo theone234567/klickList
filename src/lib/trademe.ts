@@ -197,7 +197,10 @@ export function buildTradeMeCsv(
   const lines = [...(template?.preamble ?? []), headers].map((r) => r.map(tmCell).join(","));
   for (const item of items) {
     const buyNowOnly = tm?.listingType === "buyNow";
-    const buyNow = buyNowOnly ? item.buy_now_price ?? item.start_price : item.buy_now_price;
+    const buyNow = item.buy_now_price;
+    if (buyNowOnly && (buyNow === null || !Number.isFinite(buyNow) || buyNow < 0.5)) {
+      throw new Error(`Set and save a Buy Now price of at least $0.50 for "${item.title}" before exporting.`);
+    }
     const category = categoryFor(item, categoryMap, cats);
     const row = headers.map((h, i) => {
       const d = defaults[i] ?? "";

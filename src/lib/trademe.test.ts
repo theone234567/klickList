@@ -148,9 +148,10 @@ describe("listing options from Settings", () => {
     expect(csv[1].slice(1)).toEqual(["0.00=Free shipping", "False"]);
   });
   it("exports Buy Now only with matching start, reserve and Buy Now prices", () => {
-    const csv = parseCsv(buildTradeMeCsv([item({ start_price: 8, buy_now_price: null })], null, new Map(), {}, [], DEFAULT_TM_OPTIONS));
+    const csv = parseCsv(buildTradeMeCsv([item({ start_price: 3, buy_now_price: 8 })], null, new Map(), {}, [], DEFAULT_TM_OPTIONS));
     const values = Object.fromEntries(csv[0].map((h, i) => [h, csv[1][i]]));
     expect([values.start_price, values.reserve_price, values.buy_now_price]).toEqual(["8.00", "8.00", "8.00"]);
+    expect(() => buildTradeMeCsv([item({ start_price: 8, buy_now_price: null })], null, new Map(), {}, [], DEFAULT_TM_OPTIONS)).toThrow("Set and save a Buy Now price");
     const auction = parseCsv(buildTradeMeCsv([item({ start_price: 3, buy_now_price: 8 })], null, new Map(), {}, [], { ...DEFAULT_TM_OPTIONS, listingType: "auction" }));
     const auctionValues = Object.fromEntries(auction[0].map((h, i) => [h, auction[1][i]]));
     expect([auctionValues.start_price, auctionValues.buy_now_price]).toEqual(["3.00", "8.00"]);
