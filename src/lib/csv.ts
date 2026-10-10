@@ -19,6 +19,30 @@ export function itemsToCsv(items: Item[]): string {
 
 /** Full text for pasting into Trade Me's description box. */
 export function fullDescription(item: Item): string {
-  const details = item.attributes.map((a) => `${a.name}: ${a.value}`).join("\n");
+  const nameKey = (name: string) => {
+    const key = name.trim().toLowerCase();
+    return key === "type" ? "format" : key;
+  };
+  const valueKey = (name: string, value: string) => {
+    const clean = value.trim().toLowerCase().replace(/[.!]+$/, "");
+    // The same numbered DVD region can have different explanatory country labels.
+    const region = name === "region" && clean.match(/^(?:region\s*)?(\d+)\s*(?:\([^)]*\))?$/);
+    return region ? region[1] : clean.replace(/\s+/g, " ");
+  };
+  const seen = new Set<string>();
+  for (const line of item.description.split(/\r?\n/)) {
+    const match = line.match(/^\s*(?:[-*•]\s*)?([^:]+):\s*(.+)$/);
+    if (match) {
+      const name = nameKey(match[1]);
+      seen.add(`${name}:${valueKey(name, match[2])}`);
+    }
+  }
+  const details = item.attributes.filter((a) => {
+    const name = nameKey(a.name);
+    const key = `${name}:${valueKey(name, a.value)}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).map((a) => `${a.name}: ${a.value}`).join("\n");
   return [item.description.trim(), details].filter(Boolean).join("\n\n");
 }
