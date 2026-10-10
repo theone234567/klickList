@@ -1,5 +1,6 @@
 import { FunctionsHttpError } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
+import { checkExportPhotoUrl, exportPhotoPath } from "./exportPhotos";
 import { blobToBase64, readBarcode, renderFinal, stitchForAi, type Processed } from "./image";
 import { DEFAULT_PREFS, type Batch, type Item, type Photo, type PriceCheck, type Settings } from "./types";
 
@@ -83,7 +84,10 @@ async function removeExports(list: { uid: string; itemId: string }[]): Promise<v
   for (const { uid, itemId } of list) {
     if (seen.has(itemId)) continue;
     seen.add(itemId);
-    for (let n = 1; n <= 20; n++) paths.push(`${uid}/export/${itemId}/${n}.jpg`);
+    for (let n = 1; n <= 20; n++) {
+      paths.push(`${uid}/export/${itemId}/${n}.jpg`);
+      paths.push(exportPhotoPath(uid, itemId, n));
+    }
     paths.push(`${uid}/${itemId}/ai.jpg`);
   }
   for (let i = 0; i < paths.length; i += 100) await supabase.storage.from(BUCKET).remove(paths.slice(i, i + 100));
@@ -319,11 +323,11 @@ export async function rememberCategory(path: string, code: string): Promise<void
 export async function exportPhotoLinks(userId: string, item: Item): Promise<string[]> {
   const links: string[] = [];
   for (const [n, p] of item.photos.slice(0, 20).entries()) {
-    const path = `${userId}/export/${item.id}/${n + 1}.jpg`;
+    const path = exportPhotoPath(userId, item.id, n + 1);
     const blob = await renderPhoto(p);
     await retry(async () => check(await supabase.storage.from(BUCKET).upload(path, blob, { contentType: "image/jpeg", upsert: true })));
     const signed = check(await supabase.storage.from(BUCKET).createSignedUrl(path, 14 * 24 * 3600));
-    links.push(signed.signedUrl);
+    links.push(checkExportPhotoUrl(signed.signedUrl));
   }
   return links;
 }
