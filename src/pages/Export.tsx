@@ -27,6 +27,7 @@ export default function ExportPage({ batchId, userId }: { batchId?: string; user
   const [error, setError] = useState("");
   const [cats, setCats] = useState<TmCategory[]>([]);
   const [showCats, setShowCats] = useState(false);
+  const [legalNoticeRead, setLegalNoticeRead] = useState(false);
 
   useEffect(() => { loadCategories().then(setCats).catch(() => {}); }, []);
   useEffect(() => {
@@ -50,6 +51,10 @@ export default function ExportPage({ batchId, userId }: { batchId?: string; user
   }
 
   async function run() {
+    if (!legalNoticeRead) {
+      setError("Read Trade Me's legal notice and tick the confirmation before exporting.");
+      return;
+    }
     setError("");
     setDone(null);
     try {
@@ -69,7 +74,7 @@ export default function ExportPage({ batchId, userId }: { batchId?: string; user
           photoLists.set(item.id, names);
         }
       }
-      const csv = "﻿" + buildTradeMeCsv(approved, settings!.tm_template, photoLists, settings!.category_map, cats.length ? cats : await loadCategories(), settings!.prefs.tm);
+      const csv = "﻿" + buildTradeMeCsv(approved, settings!.tm_template, photoLists, settings!.category_map, cats.length ? cats : await loadCategories(), settings!.prefs.tm, legalNoticeRead);
       const stamp = new Date().toISOString().slice(0, 10);
       if (mode === "links") {
         download(csv, `klicklist-trademe-${stamp}.csv`, "text/csv");
@@ -141,7 +146,10 @@ export default function ExportPage({ batchId, userId }: { batchId?: string; user
             <span><b>Photo links</b> (easiest) – Trade Me downloads the photos itself. Links expire after 14 days.</span></label>
           <label className="row"><input type="radio" checked={mode === "zip"} onChange={() => setMode("zip")} />
             <span><b>ZIP with photo files</b> – you upload the photos to Trade Me yourself, then the CSV.</span></label>
-          <button className="button primary" disabled={!approved.length || noPrice.length > 0 || !!progress} onClick={run}>
+          <p className="small">Read the legal notice for your products on <a href="https://sell.trademe.co.nz/" target="_blank" rel="noopener noreferrer">Trade Me My Products ↗</a> before confirming below.</p>
+          <label className="row"><input type="checkbox" checked={legalNoticeRead} onChange={(e) => setLegalNoticeRead(e.target.checked)} />
+            <span>I have read Trade Me's legal notice for these products.</span></label>
+          <button className="button primary" disabled={!approved.length || noPrice.length > 0 || !legalNoticeRead || !!progress} onClick={run}>
             {progress || `Create Trade Me file (${approved.length})`}
           </button>
           {error && <p className="error">{error}</p>}

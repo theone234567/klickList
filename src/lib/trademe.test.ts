@@ -11,6 +11,16 @@ const item = (over: Partial<Item> = {}): Item => ({
   price_check: null, price_checked_at: null, exported_at: null, ai_provider: null, photos: [], ...over,
 });
 
+it("exports legal confirmation only when explicitly accepted, ignoring template acceptance", () => {
+  const template = templateFromCsv("title,is_legal_notice_read,sku\nOld title,True,OLD\n");
+  const unconfirmed = parseCsv(buildTradeMeCsv([item()], template, new Map(), {}));
+  expect(unconfirmed[1][1]).toBe("False");
+  const confirmed = parseCsv(buildTradeMeCsv([item()], template, new Map(), {}, [], undefined, true));
+  expect(confirmed[1][1]).toBe("True");
+  const fallback = parseCsv(buildTradeMeCsv([item()], null, new Map(), {}, [], undefined, true));
+  expect(fallback[1][fallback[0].indexOf("is_legal_notice_read")]).toBe("true");
+});
+
 describe("csv parsing", () => {
   it("handles quotes, commas and newlines", () => {
     expect(parseCsv('a,b\r\n"x, y","he said ""hi""\nbye"\n')).toEqual([["a", "b"], ["x, y", 'he said "hi"\nbye']]);

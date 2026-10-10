@@ -190,6 +190,7 @@ export function buildTradeMeCsv(
   categoryMap: Record<string, string>,
   cats: TmCategory[] = [],
   tm?: TmOptions,
+  legalNoticeRead = false,
 ): string {
   const headers = template?.headers ?? FALLBACK_HEADERS;
   const defaults = template?.defaults ?? headers.map((h) => FALLBACK_DEFAULTS[h] ?? "");
@@ -198,6 +199,7 @@ export function buildTradeMeCsv(
     const category = categoryFor(item, categoryMap, cats);
     const row = headers.map((h, i) => {
       const d = defaults[i] ?? "";
+      if (norm(h) === "islegalnoticeread") return boolLike(d, legalNoticeRead);
       switch (fieldFor(h)) {
         case "sku": return skuFor(item);
         case "title": return fixTitleCase(item.title);
