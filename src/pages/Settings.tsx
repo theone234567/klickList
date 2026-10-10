@@ -97,6 +97,11 @@ export default function SettingsPage() {
         <section className="card stack">
           <b>Trade Me listing options</b>
           <p className="muted small">Used for every item in the Trade Me upload file. Now: {tmSummary(s.prefs.tm)}</p>
+          <label>Listing type
+            <select value={s.prefs.tm.listingType ?? "buyNow"} onChange={(e) => setTm({ listingType: e.target.value as "buyNow" | "auction" })}>
+              <option value="buyNow">Buy Now only</option><option value="auction">Auction</option>
+            </select>
+          </label>
           <label>Shipping
             <select value={s.prefs.tm.shipping} onChange={(e) => setTm({ shipping: e.target.value as TmOptions["shipping"] })}>
               <option value="free">Free shipping</option>

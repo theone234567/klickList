@@ -171,6 +171,7 @@ function optionCell(header: string, d: string, tm: TmOptions): string | null {
 export function tmSummary(tm: TmOptions): string {
   const pay = [tm.bank && "Bank deposit", tm.card && "Pay Now / card", tm.cash && "Cash"].filter(Boolean).join(", ");
   return [
+    tm.listingType === "buyNow" ? "Buy Now only" : "Auction",
     tm.shipping === "free" ? "Free shipping" : `Shipping: ${tm.shippingText || "not set"}`,
     { no: "No pickup", allowed: "Pickup allowed", must: "Pickup only" }[tm.pickup],
     `${tm.days} days`,
@@ -196,6 +197,8 @@ export function buildTradeMeCsv(
   const defaults = template?.defaults ?? headers.map((h) => FALLBACK_DEFAULTS[h] ?? "");
   const lines = [...(template?.preamble ?? []), headers].map((r) => r.map(tmCell).join(","));
   for (const item of items) {
+    const buyNowOnly = tm?.listingType === "buyNow";
+    const buyNow = buyNowOnly ? item.buy_now_price ?? item.start_price : item.buy_now_price;
     const category = categoryFor(item, categoryMap, cats);
     const row = headers.map((h, i) => {
       const d = defaults[i] ?? "";
@@ -209,9 +212,9 @@ export function buildTradeMeCsv(
           const want = tm?.days || Number(d) || 7;
           return cats.length && category ? String(allowedDuration(categoryById(cats, category), want)) : String(want);
         }
-        case "start": return price(item.start_price);
-        case "reserve": return price(item.start_price);
-        case "buynow": return price(item.buy_now_price);
+        case "start": return price(buyNowOnly ? buyNow : item.start_price);
+        case "reserve": return price(buyNowOnly ? buyNow : item.start_price);
+        case "buynow": return price(buyNow);
         case "isnew": return boolLike(d, item.condition === "New");
         case "photos": return (photoLists.get(item.id) ?? []).join(";");
         case "quantity": return d || "1";

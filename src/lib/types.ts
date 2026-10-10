@@ -73,6 +73,7 @@ export interface Prefs {
 
 /** Trade Me listing options. They override the same columns from the template. */
 export interface TmOptions {
+  listingType?: "buyNow" | "auction";
   shipping: "free" | "custom";
   shippingText: string; // e.g. "4.00=Tracked Post;7.25=Courier" or a Trade Me shipping template name
   pickup: "no" | "allowed" | "must";
@@ -83,6 +84,7 @@ export interface TmOptions {
 }
 
 export const DEFAULT_TM_OPTIONS: TmOptions = {
+  listingType: "buyNow",
   shipping: "free", shippingText: "", pickup: "no", days: 7, bank: true, card: false, cash: false,
 };
 

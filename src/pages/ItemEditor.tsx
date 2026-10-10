@@ -13,6 +13,8 @@ import { ideasOf, type PriceIdea } from "../../supabase/functions/_shared/ideas"
 import { fixTitleCase } from "../../supabase/functions/_shared/titlecase";
 import { tmSummary } from "../lib/trademe";
 import { priceSearchLinks } from "../lib/searchLinks";
+import { approvalDefaults } from "../lib/approvalDefaults";
+import { saveSettings } from "../lib/api";
 import { clearUndo, nextReady, pendingUndo, prefetchPhotos, rememberApproved, reviewProgress } from "../lib/review";
 import type { TmOptions } from "../lib/types";
 
@@ -32,8 +34,9 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
   const load = async () => {
     const it = await getItem(itemId);
     setItem(it);
-    setDraft(it);
-    setSaved(true);
+    const prepared = approvalDefaults(it);
+    setDraft(prepared);
+    setSaved(JSON.stringify(prepared.attributes) === JSON.stringify(it.attributes));
     const r = nextReady(await listItems(), itemId);
     setLeft(r.left);
     prefetchPhotos(r.next); // so "Approve & next" opens instantly
@@ -63,7 +66,7 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
   const set = <K extends keyof Item>(k: K, v: Item[K]) => { setDraft({ ...draft, [k]: v }); setSaved(false); };
 
   async function save(extra: Partial<Item> = {}) {
-    const d = { ...draft!, ...extra };
+    const d = approvalDefaults({ ...draft!, ...extra });
     setBusy("Saving…");
     try {
       await updateItem(d.id, {
@@ -98,7 +101,16 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
 
   async function approve() {
     if (busy) return;
+    if (!tm) return setError("Listing settings are still loading. Try again shortly.");
     if (!draft!.title.trim()) return setError("Add a title first.");
+    if (tm?.listingType === "buyNow") {
+      const amount = draft!.buy_now_price ?? draft!.start_price;
+      if (!amount || amount < 0.5) return setError("Type a Buy Now price first (at least $0.50).");
+      await save({ status: "ready", start_price: amount, buy_now_price: amount });
+      rememberApproved(draft!.id, draft!.title);
+      await goNext();
+      return;
+    }
     if (!draft!.start_price || draft!.start_price < 0.5) return setError("Type a start price first (at least $0.50) – see the price ideas.");
     if (draft!.buy_now_price !== null && draft!.buy_now_price < draft!.start_price) return setError("Buy Now must be at least the start price.");
     await save({ status: "ready" });
@@ -261,12 +273,19 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
             <label>Region <span className="muted small">DVD / Blu-ray / games – e.g. Region 4, Region B, PAL. Leave blank for other items.</span>
               <input value={region} maxLength={40} placeholder="e.g. Region 4" onChange={(e) => setRegion(e.target.value)} />
             </label>
+            {!region && /dvd|blu.?ray/i.test(`${draft.title} ${draft.category_path}`) && <p className="muted small">Region not identified. Check the disc or case and enter it before approving.</p>}
+            <label>Condition
+              <select value={draft.attributes.find((a) => /^condition$/i.test(a.name.trim()))?.value ?? "Good"}
+                onChange={(e) => set("attributes", [...draft.attributes.filter((a) => !/^condition$/i.test(a.name.trim())), { name: "Condition", value: e.target.value }])}>
+                {[...new Set(["Good", "Very good", "Acceptable", "Like new", "New", draft.attributes.find((a) => /^condition$/i.test(a.name.trim()))?.value ?? "Good"])].map((value) => <option key={value}>{value}</option>)}
+              </select>
+            </label>
             <div className="stack">
               <span>Trade Me category</span>
               <CategoryPicker item={draft} value={draft.tm_category} onChange={(code) => set("tm_category", code)} />
             </div>
             <div className="row wrap">
-              <label className="grow">Condition
+              <label className="grow">New or used
                 <select value={draft.condition} onChange={(e) => set("condition", e.target.value as Item["condition"])}>
                   {CONDITIONS.map((c) => <option key={c}>{c}</option>)}
                 </select>
@@ -277,14 +296,30 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
                 </select>
               </label>
             </div>
+            <label>Listing type <span className="muted small">Applies to every item in your export.</span>
+              <select disabled={!tm} value={tm?.listingType ?? "buyNow"} onChange={async (e) => {
+                const listingType = e.target.value as "buyNow" | "auction";
+                try {
+                  const settings = await getSettings();
+                  const options = { ...settings.prefs.tm, listingType };
+                  await saveSettings({ prefs: { ...settings.prefs, tm: options } }); setTm(options);
+                }
+                catch (err) { setError((err as Error).message); }
+              }}>
+                <option value="buyNow">Buy Now only</option><option value="auction">Auction</option>
+              </select>
+            </label>
             <div className="row wrap">
-              <label className="grow">Start price $
+              {tm?.listingType !== "buyNow" && <label className="grow">Start price $
                 <input type="number" inputMode="decimal" min={0} step="0.5" value={draft.start_price ?? ""}
                   onChange={(e) => set("start_price", e.target.value === "" ? null : Number(e.target.value))} />
-              </label>
+              </label>}
               <label className="grow">Buy Now $
-                <input type="number" inputMode="decimal" min={0} step="0.5" value={draft.buy_now_price ?? ""}
-                  onChange={(e) => set("buy_now_price", e.target.value === "" ? null : Number(e.target.value))} />
+                <input type="number" inputMode="decimal" min={0} step="0.5" value={(tm?.listingType === "buyNow" ? draft.buy_now_price ?? draft.start_price : draft.buy_now_price) ?? ""}
+                  onChange={(e) => {
+                    const value = e.target.value === "" ? null : Number(e.target.value);
+                    setDraft({ ...draft, buy_now_price: value, ...(tm?.listingType === "buyNow" ? { start_price: value } : {}) }); setSaved(false);
+                  }} />
               </label>
             </div>
             <div className="card small stack price-box">
@@ -328,7 +363,7 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
             )}
 
             <b>Details</b>
-            {draft.attributes.map((a, i) => isRegion(a.name) ? null : (
+            {draft.attributes.map((a, i) => isRegion(a.name) || /^condition$/i.test(a.name.trim()) ? null : (
               <div key={i} className="row">
                 <input style={{ flex: "0 0 35%" }} value={a.name} maxLength={40} onChange={(e) => set("attributes", draft.attributes.map((x, j) => j === i ? { ...x, name: e.target.value } : x))} />
                 <input className="grow" value={a.value} maxLength={120} onChange={(e) => set("attributes", draft.attributes.map((x, j) => j === i ? { ...x, value: e.target.value } : x))} />

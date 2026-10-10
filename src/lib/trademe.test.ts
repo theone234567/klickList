@@ -135,6 +135,14 @@ describe("defaults and automatic categories", () => {
 });
 
 describe("listing options from Settings", () => {
+  it("exports Buy Now only with matching start, reserve and Buy Now prices", () => {
+    const csv = parseCsv(buildTradeMeCsv([item({ start_price: 8, buy_now_price: null })], null, new Map(), {}, [], DEFAULT_TM_OPTIONS));
+    const values = Object.fromEntries(csv[0].map((h, i) => [h, csv[1][i]]));
+    expect([values.start_price, values.reserve_price, values.buy_now_price]).toEqual(["8.00", "8.00", "8.00"]);
+    const auction = parseCsv(buildTradeMeCsv([item({ start_price: 3, buy_now_price: 8 })], null, new Map(), {}, [], { ...DEFAULT_TM_OPTIONS, listingType: "auction" }));
+    const auctionValues = Object.fromEntries(auction[0].map((h, i) => [h, auction[1][i]]));
+    expect([auctionValues.start_price, auctionValues.buy_now_price]).toEqual(["3.00", "8.00"]);
+  });
   const row = (tm: import("./types").TmOptions, template: import("./types").TmTemplate | null = null) => {
     const out = parseCsv(buildTradeMeCsv([item({ title: "shrek 2 dvd" })], template, new Map(), {}, [], tm));
     return Object.fromEntries(out[0].map((h, i) => [h, out[1][i]]));
@@ -149,7 +157,7 @@ describe("listing options from Settings", () => {
   it("uses your own shipping prices", () => {
     expect(row({ ...DEFAULT_TM_OPTIONS, shipping: "custom", shippingText: "4.00=Tracked Post ; 7.25=Courier" }).delivery_price)
       .toBe("4.00=Tracked Post;7.25=Courier");
-    expect(tmSummary(DEFAULT_TM_OPTIONS)).toBe("Free shipping · No pickup · 7 days · Bank deposit");
+    expect(tmSummary(DEFAULT_TM_OPTIONS)).toBe("Buy Now only · Free shipping · No pickup · 7 days · Bank deposit");
   });
 });
 
