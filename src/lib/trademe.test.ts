@@ -105,7 +105,7 @@ describe("Trade Me import guide columns", () => {
     const out = parseCsv(buildTradeMeCsv([item({ attributes: [] })], t, new Map(), {}));
     const row = Object.fromEntries(out[0].map((h, i) => [h, out[1][i]]));
     expect([row.attributes, row.second_category_id, row.dvd_catalogue_id, row.barcode_gtin, row.brand]).toEqual(["", "", "", "", ""]);
-    expect(row.delivery_price).toBe("4.00=Tracked Post");
+    expect(row.delivery_price).toBe("0.00=Free shipping");
     expect(row.category_id).toBe("1234");
   });
   it("keeps descriptions within Trade Me's 2048 characters", () => {
@@ -135,6 +135,11 @@ describe("defaults and automatic categories", () => {
 });
 
 describe("listing options from Settings", () => {
+  it("overrides paid shipping and courier rates in an imported template even without settings", () => {
+    const template = templateFromCsv("title,delivery_price,delivery_use_bookcourier_rates\nOld,5.00=Courier,True\n");
+    const csv = parseCsv(buildTradeMeCsv([item()], template, new Map(), {}));
+    expect(csv[1].slice(1)).toEqual(["0.00=Free shipping", "False"]);
+  });
   it("exports Buy Now only with matching start, reserve and Buy Now prices", () => {
     const csv = parseCsv(buildTradeMeCsv([item({ start_price: 8, buy_now_price: null })], null, new Map(), {}, [], DEFAULT_TM_OPTIONS));
     const values = Object.fromEntries(csv[0].map((h, i) => [h, csv[1][i]]));
@@ -154,9 +159,9 @@ describe("listing options from Settings", () => {
       .toEqual(["0.00=Free shipping", "True", "False", "5", "True", "False"]);
     expect(r.title).toBe("Shrek 2 DVD");
   });
-  it("uses your own shipping prices", () => {
+  it("overrides older saved shipping charges with free shipping", () => {
     expect(row({ ...DEFAULT_TM_OPTIONS, shipping: "custom", shippingText: "4.00=Tracked Post ; 7.25=Courier" }).delivery_price)
-      .toBe("4.00=Tracked Post;7.25=Courier");
+      .toBe("0.00=Free shipping");
     expect(tmSummary(DEFAULT_TM_OPTIONS)).toBe("Buy Now only · Free shipping · No pickup · 7 days · Bank deposit");
   });
 });

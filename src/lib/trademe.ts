@@ -149,9 +149,8 @@ const price = (n: number | null) => (n === null || n === undefined ? "" : Number
 export const FREE_SHIPPING = "0.00=Free shipping";
 
 /** Shipping text as Trade Me expects it: "price=description;..." or a shipping template name. */
-export function shippingCell(tm: TmOptions): string {
-  if (tm.shipping === "free") return FREE_SHIPPING;
-  return tm.shippingText.replace(/["\r\n]/g, " ").replace(/\s*;\s*/g, ";").trim().slice(0, 500);
+export function shippingCell(_tm: TmOptions): string {
+  return FREE_SHIPPING;
 }
 
 /** Columns set by Settings → Trade Me listing options (they override the template). */
@@ -172,7 +171,7 @@ export function tmSummary(tm: TmOptions): string {
   const pay = [tm.bank && "Bank deposit", tm.card && "Pay Now / card", tm.cash && "Cash"].filter(Boolean).join(", ");
   return [
     tm.listingType === "buyNow" ? "Buy Now only" : "Auction",
-    tm.shipping === "free" ? "Free shipping" : `Shipping: ${tm.shippingText || "not set"}`,
+    "Free shipping",
     { no: "No pickup", allowed: "Pickup allowed", must: "Pickup only" }[tm.pickup],
     `${tm.days} days`,
     pay || "No payment method!",
@@ -202,6 +201,8 @@ export function buildTradeMeCsv(
     const category = categoryFor(item, categoryMap, cats);
     const row = headers.map((h, i) => {
       const d = defaults[i] ?? "";
+      if (h.trim().toLowerCase() === "delivery_price") return FREE_SHIPPING;
+      if (h.trim().toLowerCase() === "delivery_use_bookcourier_rates") return boolLike(d, false);
       if (norm(h) === "islegalnoticeread") return boolLike(d, legalNoticeRead);
       switch (fieldFor(h)) {
         case "sku": return skuFor(item);

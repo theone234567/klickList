@@ -290,12 +290,13 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
                   {CONDITIONS.map((c) => <option key={c}>{c}</option>)}
                 </select>
               </label>
-              <label className="grow">Shipping
+              <label className="grow">Parcel size
                 <select value={draft.shipping_size} onChange={(e) => set("shipping_size", e.target.value)}>
                   {SHIPPING_SIZES.map((c) => <option key={c}>{c}</option>)}
                 </select>
               </label>
             </div>
+            <p className="small"><b>Free shipping</b> — the buyer pays $0 shipping. Included in the Trade Me upload.</p>
             <label>Listing type <span className="muted small">Applies to every item in your export.</span>
               <select disabled={!tm} value={tm?.listingType ?? "buyNow"} onChange={async (e) => {
                 const listingType = e.target.value as "buyNow" | "auction";

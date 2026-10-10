@@ -102,18 +102,7 @@ export default function SettingsPage() {
               <option value="buyNow">Buy Now only</option><option value="auction">Auction</option>
             </select>
           </label>
-          <label>Shipping
-            <select value={s.prefs.tm.shipping} onChange={(e) => setTm({ shipping: e.target.value as TmOptions["shipping"] })}>
-              <option value="free">Free shipping</option>
-              <option value="custom">My own shipping prices</option>
-            </select>
-          </label>
-          {s.prefs.tm.shipping === "custom" && (
-            <label>Shipping prices <span className="muted small">price=description, separated by ; (up to 10), or the name of one of your Trade Me shipping templates</span>
-              <input value={s.prefs.tm.shippingText} maxLength={500} placeholder="4.00=Tracked Post;7.25=Courier;8.50=Rural Courier"
-                onChange={(e) => setTm({ shippingText: e.target.value }, false)} onBlur={() => setTm({})} />
-            </label>
-          )}
+          <p><b>Free shipping</b> — included for every exported listing.</p>
           <label>Pickup
             <select value={s.prefs.tm.pickup} onChange={(e) => setTm({ pickup: e.target.value as TmOptions["pickup"] })}>
               <option value="no">No pickups</option>
