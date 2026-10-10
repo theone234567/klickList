@@ -15,3 +15,10 @@ it("preserves reviewed condition and region, and leaves unknown regions unset", 
   expect(approvalDefaults(item).attributes).toEqual(item.attributes);
   expect(approvalDefaults({ ...item, attributes: [] }).attributes.some((a) => a.name === "Region")).toBe(false);
 });
+
+it("shows a barcode-derived region for discs with a verification warning", () => {
+  const item = { title: "Blu-ray", category_path: "Movies-TV", description: "", barcode: "9400000000000", attributes: [], needs_check: [] } as unknown as Item;
+  const result = approvalDefaults(item);
+  expect(result.attributes.find((a) => a.name === "Region")?.value).toContain("Region B");
+  expect(result.needs_check).toContain("Region inferred from barcode — check the disc or case.");
+});

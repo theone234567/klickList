@@ -6,6 +6,7 @@ import { allowedDuration, categoryById, suggestCategories, type TmCategory } fro
 import { fullDescription } from "./csv";
 import { fixTitleCase } from "../../supabase/functions/_shared/titlecase";
 import type { Item, TmOptions, TmTemplate } from "./types";
+import { tradeMeAttributes } from "./trademeAttributes";
 
 /**
  * Trade Me's columns, exactly as in Trade Me's "My Products Import File Template" (guide v6.15).
@@ -211,6 +212,9 @@ export function buildTradeMeCsv(
       if (h.trim().toLowerCase() === "delivery_price") return FREE_SHIPPING;
       if (h.trim().toLowerCase() === "delivery_use_bookcourier_rates") return boolLike(d, false);
       if (norm(h) === "islegalnoticeread") return boolLike(d, legalNoticeRead);
+      if (norm(h) === "attributes") return tradeMeAttributes(item);
+      if (["issoldinmultiplequantities", "issoldmultiplequantities"].includes(norm(h))) return boolLike(d, buyNowOnly);
+      if (norm(h) === "isshippingpriceperquantitysold") return boolLike(d, false);
       switch (fieldFor(h)) {
         case "sku": return skuFor(item);
         case "title": return fixTitleCase(item.title);

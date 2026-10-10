@@ -104,7 +104,7 @@ describe("Trade Me import guide columns", () => {
     const t = templateFromCsv(csv);
     const out = parseCsv(buildTradeMeCsv([item({ attributes: [] })], t, new Map(), {}));
     const row = Object.fromEntries(out[0].map((h, i) => [h, out[1][i]]));
-    expect([row.attributes, row.second_category_id, row.dvd_catalogue_id, row.barcode_gtin, row.brand]).toEqual(["", "", "", "", ""]);
+    expect([row.attributes, row.second_category_id, row.dvd_catalogue_id, row.barcode_gtin, row.brand]).toEqual(["Condition=Good", "", "", "", ""]);
     expect(row.delivery_price).toBe("0.00=Free shipping");
     expect(row.category_id).toBe("1234");
   });
@@ -151,10 +151,13 @@ describe("listing options from Settings", () => {
     const csv = parseCsv(buildTradeMeCsv([item({ start_price: 3, buy_now_price: 8 })], null, new Map(), {}, [], DEFAULT_TM_OPTIONS));
     const values = Object.fromEntries(csv[0].map((h, i) => [h, csv[1][i]]));
     expect([values.start_price, values.reserve_price, values.buy_now_price]).toEqual(["8.00", "8.00", "8.00"]);
+    expect(values.is_sold_in_multiple_quantities).toBe("True");
+    expect(values.stock_amount).toBe("1");
     expect(() => buildTradeMeCsv([item({ start_price: 8, buy_now_price: null })], null, new Map(), {}, [], DEFAULT_TM_OPTIONS)).toThrow("Set and save a Buy Now price");
     const auction = parseCsv(buildTradeMeCsv([item({ start_price: 3, buy_now_price: 8 })], null, new Map(), {}, [], { ...DEFAULT_TM_OPTIONS, listingType: "auction" }));
     const auctionValues = Object.fromEntries(auction[0].map((h, i) => [h, auction[1][i]]));
     expect([auctionValues.start_price, auctionValues.buy_now_price]).toEqual(["3.00", "8.00"]);
+    expect(auctionValues.is_sold_in_multiple_quantities).toBe("False");
   });
   const row = (tm: import("./types").TmOptions, template: import("./types").TmTemplate | null = null) => {
     const out = parseCsv(buildTradeMeCsv([item({ title: "shrek 2 dvd" })], template, new Map(), {}, [], tm));

@@ -73,6 +73,7 @@ export default function ItemEditor({ itemId, review = false }: { itemId: string;
         title: d.title, subtitle: d.subtitle, description: d.description, category_path: d.category_path,
         condition: d.condition, start_price: d.start_price, buy_now_price: d.buy_now_price,
         shipping_size: d.shipping_size, attributes: d.attributes, status: d.status, hint: d.hint,
+        needs_check: d.needs_check,
         tm_category: d.tm_category,
       });
       if (d.tm_category && d.tm_category !== item!.tm_category) await rememberCategory(d.category_path, d.tm_category);
