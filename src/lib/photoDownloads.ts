@@ -1,5 +1,11 @@
 import type { Item, Photo } from "./types";
 
+export function togglePhotoSelection(selected: ReadonlySet<string>, id: string): Set<string> {
+  const next = new Set(selected);
+  if (next.has(id)) next.delete(id); else next.add(id);
+  return next;
+}
+
 /** Flat, portable filenames for manual upload; duplicate titles never overwrite photos. */
 export function photoDownloadEntries(items: Item[]): { photo: Photo; name: string }[] {
   const used = new Set<string>();

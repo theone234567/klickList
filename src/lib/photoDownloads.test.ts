@@ -1,7 +1,17 @@
 import { expect, it } from "vitest";
-import { photoDownloadEntries } from "./photoDownloads";
+import { photoDownloadEntries, togglePhotoSelection } from "./photoDownloads";
 import type { Item, Photo } from "./types";
 const item = (title: string, positions = [0, 1]) => ({ title, photos: positions.map((position) => ({ position } as Photo)) } as Item);
+
+it("selects multiple items independently without clearing earlier selections", () => {
+  const initial = new Set<string>();
+  const one = togglePhotoSelection(initial, "first");
+  const two = togglePhotoSelection(one, "second");
+  expect([...two]).toEqual(["first", "second"]);
+  expect([...togglePhotoSelection(two, "first")]).toEqual(["second"]);
+  expect([...one]).toEqual(["first"]);
+  expect(initial.size).toBe(0);
+});
 
 it("numbers each item's photos in display order and avoids collisions between equal titles", () => {
   const entries = photoDownloadEntries([item("Doctor Beeching", [1, 0]), item("Doctor Beeching"), item("Doctor Beeching (2)")]);

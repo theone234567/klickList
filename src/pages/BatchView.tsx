@@ -10,7 +10,7 @@ import { DEFAULT_PREFS, type Item, type Photo, type Prefs } from "../lib/types";
 import { aiStart, ideasOf } from "../../supabase/functions/_shared/ideas";
 import { supabase } from "../lib/supabase";
 import { nextReady, startReviewRun } from "../lib/review";
-import { photoDownloadEntries } from "../lib/photoDownloads";
+import { photoDownloadEntries, togglePhotoSelection } from "../lib/photoDownloads";
 
 const AI_CONCURRENCY = 3;
 const PRICE_CONCURRENCY = 2;
@@ -56,6 +56,10 @@ export default function BatchView({ batchId, userId }: { batchId?: string; userI
   const [filter, setFilter] = useState<Filter>("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [photoProgress, setPhotoProgress] = useState("");
+  const [photoFormat, setPhotoFormat] = useState<"jpg" | "zip">("jpg");
+  const [imageDownloads, setImageDownloads] = useState<{ name: string; url: string }[]>([]);
+  const imageDownloadsRef = useRef<{ name: string; url: string }[]>([]);
+  useEffect(() => () => { imageDownloadsRef.current.forEach((f) => URL.revokeObjectURL(f.url)); }, []);
   const downloadingPhotos = useRef(false);
   const [groups, setGroups] = useState<Map<string, string>>(new Map()); // photo group id -> name
   // Arrived here after reviewing the last listing ("#/?done"): show the finished message once.
@@ -231,8 +235,21 @@ export default function BatchView({ batchId, userId }: { batchId?: string; userI
         try {
           files[entry.name] = new Uint8Array(await (await renderPhoto(entry.photo)).arrayBuffer());
         } catch {
-          throw new Error(`Couldn't download ${entry.name}. Please try again. No ZIP was created.`);
+          throw new Error(`Couldn't prepare ${entry.name}. Please try again. No download was started.`);
         }
+      }
+      if (photoFormat === "jpg") {
+        imageDownloadsRef.current.forEach((f) => URL.revokeObjectURL(f.url));
+        const downloads = Object.entries(files).map(([name, data]) => ({ name, url: URL.createObjectURL(new Blob([data as BlobPart], { type: "image/jpeg" })) }));
+        imageDownloadsRef.current = downloads;
+        setImageDownloads(downloads);
+        for (const [n, file] of downloads.entries()) {
+          setPhotoProgress(`Saving JPG ${n + 1}/${downloads.length}…`);
+          const a = document.createElement("a"); a.href = file.url; a.download = file.name; a.click();
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+        setNotice(`Requested ${downloads.length} JPG downloads. Allow multiple downloads if your browser asks. Individual download links are below if any files were blocked.`);
+        return;
       }
       setPhotoProgress("Creating photo ZIP…");
       const data = await new Promise<Uint8Array>((resolve, reject) => zip(files, { level: 0 }, (err, result) => err ? reject(err) : resolve(result)));
@@ -345,13 +362,21 @@ export default function BatchView({ batchId, userId }: { batchId?: string; userI
         {downloadableShown.length > 0 && <div className="card stack">
           <b>Download photos for manual upload</b>
           <p className="small muted">Select items below, or download all shown items. Photos use each item's name followed by 1, 2, 3… and include your crop, rotation and selected background.</p>
+          <label>Download format<select value={photoFormat} disabled={!!photoProgress} onChange={(e) => setPhotoFormat(e.target.value as "jpg" | "zip")}>
+            <option value="jpg">JPG image files (no ZIP)</option><option value="zip">ZIP containing JPGs</option>
+          </select></label>
           <div className="row wrap">
             <button className="button" disabled={!!photoProgress} onClick={() => setSelected(new Set(downloadableShown.map((i) => i.id)))}>Select all shown</button>
             <button className="link" disabled={!!photoProgress || !selected.size} onClick={() => setSelected(new Set())}>Clear selection</button>
-            <button className="button primary" disabled={!!photoProgress || !selectedItems.length} onClick={() => downloadPhotos(selectedItems)}>Download selected photos ({selectedItems.length} items)</button>
+            <button className="button primary" disabled={!!photoProgress || !selectedItems.length} onClick={() => downloadPhotos(selectedItems)}>Download selected {photoFormat === "jpg" ? "JPGs" : "ZIP"} ({selectedItems.length} items)</button>
             <button className="button" disabled={!!photoProgress} onClick={() => downloadPhotos(downloadableShown)}>Download all shown photos</button>
           </div>
           {photoProgress && <p role="status">{photoProgress}</p>}
+          <p role="status" className="small">{selectedItems.length} items selected · {selectedItems.reduce((n, i) => n + i.photos.length, 0)} photos</p>
+          {imageDownloads.length > 0 && <div className="stack small"><b>Individual JPG downloads</b>
+            <p>Allow multiple downloads in your browser, or click any missing image below.</p>
+            {imageDownloads.map((file) => <a key={file.name} href={file.url} download={file.name}>{file.name}</a>)}
+          </div>}
         </div>}
 
         {items === null ? <p className="muted">Loading…</p> : shown.length === 0 ? (
@@ -367,8 +392,8 @@ export default function BatchView({ batchId, userId }: { batchId?: string; userI
           <ul className="grid">
             {g.items.map((i) => (
               <li key={i.id} className="card tile">
-                <label className="row small"><input type="checkbox" checked={selected.has(i.id)} disabled={!i.photos.length || !!photoProgress}
-                  onChange={(e) => { const checked = e.target.checked; setSelected((old) => { const next = new Set(old); if (checked) next.add(i.id); else next.delete(i.id); return next; }); }} />Select photos</label>
+                <button type="button" className={`tile-select ${selected.has(i.id) ? "primary" : ""}`} aria-pressed={selected.has(i.id)} aria-label={`${selected.has(i.id) ? "Deselect" : "Select"} ${i.title || "item"} photos`} disabled={!i.photos.length || !!photoProgress}
+                  onClick={() => setSelected((old) => togglePhotoSelection(old, i.id))}>{selected.has(i.id) ? "✓ Selected" : "Select item"}</button>
                 <button className="tile-trash" aria-label={`Delete ${i.title || "item"}`} title="Delete"
                   onClick={() => trash(i)} disabled={running.has(i.id)}>🗑</button>
                 <a href={`#/i/${i.id}`}>
@@ -384,7 +409,7 @@ export default function BatchView({ batchId, userId }: { batchId?: string; userI
                     </span>
                   </div>
                 </a>
-                <button className="button" disabled={!i.photos.length || !!photoProgress} onClick={() => downloadPhotos([i])}>Download photos ({i.photos.length})</button>
+                <button className="button" disabled={!i.photos.length || !!photoProgress} onClick={() => downloadPhotos([i])}>Download {photoFormat === "jpg" ? "JPGs" : "ZIP"} ({i.photos.length})</button>
                 {i.ai_status === "failed" && (
                   <div className="tile-err">
                     <span className="small">{i.ai_error}</span>
